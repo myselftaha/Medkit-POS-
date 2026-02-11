@@ -756,7 +756,14 @@ const Medicines = () => {
                                         </td>
                                         <td className="px-4 py-4">
                                             <div>
-                                                <p className="font-semibold text-[14px] text-slate-700 mb-0.5">{group.name}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-semibold text-[14px] text-slate-700 mb-0.5">{group.name}</p>
+                                                    {group.prescriptionRequired && (
+                                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-500 border border-amber-100 uppercase tracking-tighter">
+                                                            Rx
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <p className="text-[12px] text-slate-400 font-medium leading-tight">{group.genericName}</p>
                                             </div>
                                         </td>
@@ -795,9 +802,13 @@ const Medicines = () => {
                                             )}
                                         </td>
                                         <td className="px-4 py-4">
-                                            {group.prescriptionRequired && (
+                                            {group.prescriptionRequired ? (
+                                                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-50 text-amber-500 border border-amber-100">
+                                                    Rx Required
+                                                </span>
+                                            ) : (
                                                 <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-50 text-slate-400 border border-slate-100">
-                                                    Rx
+                                                    OTC
                                                 </span>
                                             )}
                                         </td>
