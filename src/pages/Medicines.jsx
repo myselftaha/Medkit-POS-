@@ -29,6 +29,7 @@ const Medicines = () => {
     const [loading, setLoading] = useState(true);
     const [viewMode, setViewMode] = useState('table');
     const [openActionMenu, setOpenActionMenu] = useState(null);
+    const [isPrintDropdownOpen, setIsPrintDropdownOpen] = useState(false);
 
     // Stats State
     const [stats, setStats] = useState({
@@ -142,6 +143,7 @@ const Medicines = () => {
             if (!groups[nameKey]) {
                 groups[nameKey] = {
                     name: m.name,
+                    genericName: m.genericName || m.generic || '-',
                     totalStock: 0,
                     batches: [],
                     suppliers: new Set(),
@@ -402,8 +404,82 @@ const Medicines = () => {
     };
 
     const handlePrint = () => {
-        window.print();
-        showToast('Print dialog opened', 'success');
+        setIsPrintDropdownOpen(prev => !prev);
+    };
+
+    const handlePrintAll = () => {
+        const printWindow = window.open('', '', 'height=600,width=800');
+        const tableRows = groupedMedicines.map((medicine, index) => {
+            const firstBatch = medicine.batches[0];
+            const expiryDate = firstBatch?.expiryDate ? new Date(firstBatch.expiryDate).toISOString().split('T')[0] : 'N/A';
+            return `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${medicine.name}</td>
+                    <td>${medicine.genericName || '-'}</td>
+                    <td>${medicine.category || '-'}</td>
+                    <td>${medicine.totalStock}</td>
+                    <td>${medicine.price}</td>
+                    <td>${expiryDate}</td>
+                    <td>Active</td>
+                </tr>
+            `;
+        }).join('');
+
+        const html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Medicine Inventory List</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; }
+                    h1 { margin-bottom: 20px; }
+                    .header { display: flex; justify-content: space-between; margin-bottom: 20px; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+                    th { background-color: #f8f9fa; font-weight: 600; font-size: 14px; }
+                    td { font-size: 14px; }
+                    .footer { margin-top: 20px; text-align: right; font-size: 12px; color: #666; }
+                     @media print {
+                        .no-print { display: none; }
+                        button { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>Medicine Inventory List</h1>
+                    <div style="font-size: 12px; color: #666;">Generated: ${new Date().toLocaleDateString()}</div>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <strong>Total Medicines:</strong> ${groupedMedicines.length}
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Medicine Name</th>
+                            <th>Generic Name</th>
+                            <th>Category</th>
+                            <th>Stock</th>
+                            <th>Price (Rs.)</th>
+                            <th>Expiry</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRows}
+                    </tbody>
+                </table>
+                <script>
+                    window.onload = function() { window.print(); }
+                </script>
+            </body>
+            </html>
+        `;
+        printWindow.document.write(html);
+        printWindow.document.close();
+        setIsPrintDropdownOpen(false);
     };
 
     return (
@@ -540,14 +616,28 @@ const Medicines = () => {
                             <ChevronDown size={14} className="text-gray-400 ml-1" />
                         </button>
 
-                        <button
-                            onClick={handlePrint}
-                            className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-md transition-colors bg-white"
-                        >
-                            <Printer size={14} />
-                            Print
-                            <ChevronDown size={14} className="text-gray-400 ml-1" />
-                        </button>
+                        <div className="relative">
+                            <button
+                                onClick={handlePrint}
+                                className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-md transition-colors bg-white"
+                            >
+                                <Printer size={14} />
+                                Print
+                                <ChevronDown size={14} className={`text-gray-400 ml-1 transition-transform ${isPrintDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {isPrintDropdownOpen && (
+                                <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 animate-in fade-in zoom-in-95 duration-200">
+                                    <button
+                                        onClick={handlePrintAll}
+                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                    >
+                                        <Printer size={14} />
+                                        Print All
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
