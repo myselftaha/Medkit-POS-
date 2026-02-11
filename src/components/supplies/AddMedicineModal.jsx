@@ -186,31 +186,28 @@ const AddMedicineModal = ({ isOpen, onClose, onSave, suppliers, initialSupplier 
                         <button
                             type="button"
                             onClick={() => setActiveTab('basic')}
-                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'basic' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'basic' ? 'bg-white text-[#00c950] shadow-sm border-2 border-[#00c950]' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                             Basic Info
                         </button>
                         <button
                             type="button"
                             onClick={() => setActiveTab('stock')}
-                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'stock' ? 'bg-white text-gray-900 shadow-sm border-t-2 border-t-[#00c950]' : 'text-gray-500 hover:text-gray-700'}`}
-                            style={activeTab === 'stock' ? { borderTop: '2px solid #00c950' } : {}}
+                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'stock' ? 'bg-white text-[#00c950] shadow-sm border-2 border-[#00c950]' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                             Stock & Batch
                         </button>
                         <button
                             type="button"
                             onClick={() => setActiveTab('pricing')}
-                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'pricing' ? 'bg-white text-gray-900 shadow-sm border-t-2 border-t-[#00c950]' : 'text-gray-500 hover:text-gray-700'}`}
-                            style={activeTab === 'pricing' ? { borderTop: '2px solid #00c950' } : {}}
+                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'pricing' ? 'bg-white text-[#00c950] shadow-sm border-2 border-[#00c950]' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                             Pricing
                         </button>
                         <button
                             type="button"
                             onClick={() => setActiveTab('other')}
-                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'other' ? 'bg-white text-gray-900 shadow-sm border-t-2 border-t-[#00c950]' : 'text-gray-500 hover:text-gray-700'}`}
-                            style={activeTab === 'other' ? { borderTop: '2px solid #00c950' } : {}}
+                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'other' ? 'bg-white text-[#00c950] shadow-sm border-2 border-[#00c950]' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                             Other
                         </button>
@@ -506,7 +503,7 @@ const AddMedicineModal = ({ isOpen, onClose, onSave, suppliers, initialSupplier 
 };
 
 const FormInput = ({ label, name, value, onChange, type = "text", required = false, placeholder, list }) => (
-    <div className="space-y-1.5 w-full">
+    <div className="space-y-1.5 w-full group">
         <label className="block text-sm font-medium text-gray-900">
             {label} {required && <span className="text-red-500">*</span>}
         </label>
@@ -518,7 +515,7 @@ const FormInput = ({ label, name, value, onChange, type = "text", required = fal
             required={required}
             placeholder={placeholder}
             list={list}
-            className="w-full px-4 py-2.5 rounded-lg border border-gray-200 outline-none focus:border-[#00c950] focus:ring-4 focus:ring-[#00c950]/10 transition-all text-gray-900"
+            className="w-full px-4 py-2.5 rounded-lg border border-gray-200 outline-none focus:border-[#00c950] focus:ring-4 focus:ring-[#00c950]/10 transition-all text-gray-900 hover:border-gray-300"
         />
     </div>
 );
@@ -534,7 +531,7 @@ const FormSelect = ({ label, name, value, onChange, required = false, options = 
                 value={value}
                 onChange={onChange}
                 required={required}
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 outline-none focus:border-[#00c950] focus:ring-4 focus:ring-[#00c950]/10 transition-all text-gray-900 appearance-none bg-white"
+                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 outline-none focus:border-[#00c950] focus:ring-4 focus:ring-[#00c950]/10 transition-all text-gray-900 appearance-none bg-white hover:border-gray-300"
             >
                 {options.map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
