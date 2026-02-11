@@ -3,7 +3,7 @@ import { useSettings } from '../context/SettingsContext';
 import { useToast } from '../context/ToastContext';
 import {
     Store, FileText, DollarSign, Package, Bell, Clock, Settings as SettingsIcon,
-    Save, RotateCcw, Upload, Check, Download, RefreshCcw, Smartphone
+    Save, RotateCcw, Upload, Check, Download, RefreshCcw, Smartphone, Trash2
 } from 'lucide-react';
 import API_URL from '../config/api';
 import TabNavigation from '../components/common/TabNavigation';
@@ -234,6 +234,10 @@ const Settings = () => {
         }
     };
 
+    const handleRemoveLogo = () => {
+        setFormData(prev => ({ ...prev, storeLogo: null }));
+    };
+
     if (loading) {
         return <div className="p-8 text-center text-gray-500">Loading settings...</div>;
     }
@@ -389,20 +393,34 @@ const Settings = () => {
                                             )}
                                         </div>
                                         <div className="flex-1">
-                                            <input
-                                                type="file"
-                                                accept="image/*"
-                                                onChange={handleLogoUpload}
-                                                className="hidden"
-                                                id="logo-upload"
-                                            />
-                                            <label
-                                                htmlFor="logo-upload"
-                                                className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                                            >
-                                                <Upload size={16} />
-                                                Upload Logo
-                                            </label>
+                                            <div className="flex items-center gap-3">
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={handleLogoUpload}
+                                                    className="hidden"
+                                                    id="logo-upload"
+                                                />
+                                                <label
+                                                    htmlFor="logo-upload"
+                                                    className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                                                >
+                                                    <Upload size={16} />
+                                                    Upload Logo
+                                                </label>
+
+                                                {formData.storeLogo && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleRemoveLogo}
+                                                        className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                                                        title="Remove Logo"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                        Remove
+                                                    </button>
+                                                )}
+                                            </div>
                                             <p className="mt-2 text-xs text-gray-500">
                                                 Recommended: Square image, PNG or JPG, max 1MB.<br />
                                                 This logo will appear on receipts and the dashboard.
