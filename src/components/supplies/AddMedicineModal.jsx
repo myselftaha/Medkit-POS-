@@ -159,7 +159,7 @@ const AddMedicineModal = ({ isOpen, onClose, onSave, suppliers, initialSupplier 
             onClick={() => setActiveTab(id)}
             className={`flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2
                 ${activeTab === id
-                    ? 'border-[#0F9D78] text-[#0F9D78] bg-[#0F9D78]/5'
+                    ? 'border-[#00c950] text-[#00c950] bg-[#00c950]/5'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                 }`}
         >
@@ -193,24 +193,24 @@ const AddMedicineModal = ({ isOpen, onClose, onSave, suppliers, initialSupplier 
                         <button
                             type="button"
                             onClick={() => setActiveTab('stock')}
-                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'stock' ? 'bg-white text-gray-900 shadow-sm border-t-2 border-t-[#0F9D78]' : 'text-gray-500 hover:text-gray-700'}`}
-                            style={activeTab === 'stock' ? { borderTop: '2px solid #0F9D78' } : {}}
+                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'stock' ? 'bg-white text-gray-900 shadow-sm border-t-2 border-t-[#00c950]' : 'text-gray-500 hover:text-gray-700'}`}
+                            style={activeTab === 'stock' ? { borderTop: '2px solid #00c950' } : {}}
                         >
                             Stock & Batch
                         </button>
                         <button
                             type="button"
                             onClick={() => setActiveTab('pricing')}
-                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'pricing' ? 'bg-white text-gray-900 shadow-sm border-t-2 border-t-[#0F9D78]' : 'text-gray-500 hover:text-gray-700'}`}
-                            style={activeTab === 'pricing' ? { borderTop: '2px solid #0F9D78' } : {}}
+                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'pricing' ? 'bg-white text-gray-900 shadow-sm border-t-2 border-t-[#00c950]' : 'text-gray-500 hover:text-gray-700'}`}
+                            style={activeTab === 'pricing' ? { borderTop: '2px solid #00c950' } : {}}
                         >
                             Pricing
                         </button>
                         <button
                             type="button"
                             onClick={() => setActiveTab('other')}
-                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'other' ? 'bg-white text-gray-900 shadow-sm border-t-2 border-t-[#0F9D78]' : 'text-gray-500 hover:text-gray-700'}`}
-                            style={activeTab === 'other' ? { borderTop: '2px solid #0F9D78' } : {}}
+                            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'other' ? 'bg-white text-gray-900 shadow-sm border-t-2 border-t-[#00c950]' : 'text-gray-500 hover:text-gray-700'}`}
+                            style={activeTab === 'other' ? { borderTop: '2px solid #00c950' } : {}}
                         >
                             Other
                         </button>
@@ -446,7 +446,7 @@ const AddMedicineModal = ({ isOpen, onClose, onSave, suppliers, initialSupplier 
                                         onChange={handleChange}
                                         className="sr-only peer"
                                     />
-                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#0F9D78]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#0F9D78]"></div>
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#00c950]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#00c950]"></div>
                                 </label>
                             </div>
 
@@ -463,7 +463,7 @@ const AddMedicineModal = ({ isOpen, onClose, onSave, suppliers, initialSupplier 
                                         onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.checked ? 'Active' : 'Inactive' }))}
                                         className="sr-only peer"
                                     />
-                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#0F9D78]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#0F9D78]"></div>
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#00c950]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#00c950]"></div>
                                 </label>
                             </div>
 
@@ -475,7 +475,7 @@ const AddMedicineModal = ({ isOpen, onClose, onSave, suppliers, initialSupplier 
                                     onChange={handleChange}
                                     placeholder="Add any additional notes about this medicine..."
                                     rows="4"
-                                    className="w-full px-4 py-3 rounded-lg border border-gray-200 outline-none focus:border-[#0F9D78] focus:ring-4 focus:ring-[#0F9D78]/10 transition-all resize-none"
+                                    className="w-full px-4 py-3 rounded-lg border border-gray-200 outline-none focus:border-[#00c950] focus:ring-4 focus:ring-[#00c950]/10 transition-all resize-none"
                                 />
                             </div>
                         </div>
@@ -495,7 +495,7 @@ const AddMedicineModal = ({ isOpen, onClose, onSave, suppliers, initialSupplier 
                     <button
                         onClick={handleSubmit}
                         disabled={submitting}
-                        className="px-5 py-2.5 rounded-lg bg-[#0F9D78] text-white font-medium hover:bg-[#0D8B6A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        className="px-5 py-2.5 rounded-lg bg-[#00c950] text-white font-medium hover:bg-[#00b347] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                         {submitting ? 'Saving...' : 'Add Medicine'}
                     </button>
@@ -518,7 +518,7 @@ const FormInput = ({ label, name, value, onChange, type = "text", required = fal
             required={required}
             placeholder={placeholder}
             list={list}
-            className="w-full px-4 py-2.5 rounded-lg border border-gray-200 outline-none focus:border-[#0F9D78] focus:ring-4 focus:ring-[#0F9D78]/10 transition-all text-gray-900"
+            className="w-full px-4 py-2.5 rounded-lg border border-gray-200 outline-none focus:border-[#00c950] focus:ring-4 focus:ring-[#00c950]/10 transition-all text-gray-900"
         />
     </div>
 );
@@ -534,7 +534,7 @@ const FormSelect = ({ label, name, value, onChange, required = false, options = 
                 value={value}
                 onChange={onChange}
                 required={required}
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 outline-none focus:border-[#0F9D78] focus:ring-4 focus:ring-[#0F9D78]/10 transition-all text-gray-900 appearance-none bg-white"
+                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 outline-none focus:border-[#00c950] focus:ring-4 focus:ring-[#00c950]/10 transition-all text-gray-900 appearance-none bg-white"
             >
                 {options.map(opt => (
                     <option key={opt} value={opt}>{opt}</option>

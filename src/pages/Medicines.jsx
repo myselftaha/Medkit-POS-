@@ -531,7 +531,7 @@ const Medicines = () => {
                 <div className="flex justify-between items-center">
                     <div>
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-[#0F9D78] rounded-lg flex items-center justify-center">
+                            <div className="w-10 h-10 bg-[#00c950] rounded-lg flex items-center justify-center">
                                 <FileText className="text-white" size={20} />
                             </div>
                             <div>
@@ -542,7 +542,7 @@ const Medicines = () => {
                     </div>
                     <button
                         onClick={() => setIsAddModalOpen(true)}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-[#0F9D78] text-white rounded-lg font-medium hover:bg-[#0D8A6A] transition-colors"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-[#00c950] text-white rounded-lg font-medium hover:bg-[#00b347] transition-colors"
                     >
                         <Plus size={18} />
                         <span>Add Medicine</span>
@@ -563,19 +563,19 @@ const Medicines = () => {
                             placeholder="Search by name, generic, barcode..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-[#0F9D78]/10 focus:border-[#0F9D78] transition-all"
+                            className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-[#00c950]/10 focus:border-[#00c950] transition-all"
                         />
                     </div>
                     <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
                         <button
                             onClick={() => setViewMode('table')}
-                            className={`p-1.5 rounded-md transition-all ${viewMode === 'table' ? 'bg-white shadow-sm text-[#0F9D78]' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`p-1.5 rounded-md transition-all ${viewMode === 'table' ? 'bg-white shadow-sm text-[#00c950]' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                             <LayoutList size={18} />
                         </button>
                         <button
                             onClick={() => setViewMode('grid')}
-                            className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-[#0F9D78]' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-[#00c950]' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                             <LayoutGrid size={18} />
                         </button>
@@ -877,7 +877,7 @@ const Medicines = () => {
                     <select
                         value={pagination.limit}
                         onChange={(e) => setPagination({ ...pagination, limit: parseInt(e.target.value) })}
-                        className="px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#0F9D78]/10 focus:border-[#0F9D78] transition-all"
+                        className="px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#00c950]/10 focus:border-[#00c950] transition-all"
                     >
                         <option value="10">10</option>
                         <option value="25">25</option>
@@ -890,13 +890,13 @@ const Medicines = () => {
                     <button
                         onClick={() => fetchMedicines(pagination.page - 1)}
                         disabled={pagination.page <= 1}
-                        className="p-2 border border-gray-200 rounded-lg hover:bg-[#0F9D78]/5 hover:border-[#0F9D78]/30 hover:text-[#0F9D78] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        className="p-2 border border-gray-200 rounded-lg hover:bg-[#00c950]/5 hover:border-[#00c950]/30 hover:text-[#00c950] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     >
                         <ChevronLeft size={18} />
                     </button>
 
                     <div className="flex items-center gap-1">
-                        <span className="px-4 py-1.5 text-sm font-semibold bg-[#0F9D78] text-white rounded-lg shadow-sm">
+                        <span className="px-4 py-1.5 text-sm font-semibold bg-[#00c950] text-white rounded-lg shadow-sm">
                             {pagination.page}
                         </span>
                         <span className="text-sm text-gray-400 px-1">of</span>
@@ -908,7 +908,7 @@ const Medicines = () => {
                     <button
                         onClick={() => fetchMedicines(pagination.page + 1)}
                         disabled={pagination.page >= pagination.pages}
-                        className="p-2 border border-gray-200 rounded-lg hover:bg-[#0F9D78]/5 hover:border-[#0F9D78]/30 hover:text-[#0F9D78] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        className="p-2 border border-gray-200 rounded-lg hover:bg-[#00c950]/5 hover:border-[#00c950]/30 hover:text-[#00c950] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     >
                         <ChevronRight size={18} />
                     </button>

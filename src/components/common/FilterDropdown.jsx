@@ -31,11 +31,11 @@ const FilterDropdown = ({ label, value, options, onChange, icon: Icon, className
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium border rounded-md transition-all whitespace-nowrap
-                ${isOpen || !isAllSelected ? 'border-[#0F9D78] ring-1 ring-[#0F9D78]/20 bg-[#0F9D78]/5 text-[#0F9D78]' : 'border-gray-200 text-gray-700 hover:bg-gray-50 bg-white'}`}
+                ${isOpen || !isAllSelected ? 'border-[#00c950] ring-1 ring-[#00c950]/20 bg-[#00c950]/5 text-[#00c950]' : 'border-gray-200 text-gray-700 hover:bg-gray-50 bg-white'}`}
             >
-                {Icon && <Icon size={16} className={isOpen || !isAllSelected ? 'text-[#0F9D78]' : 'text-gray-500'} />}
+                {Icon && <Icon size={16} className={isOpen || !isAllSelected ? 'text-[#00c950]' : 'text-gray-500'} />}
                 <span>{value}</span>
-                <ChevronDown size={14} className={`ml-1 transition-transform ${isOpen ? 'rotate-180 text-[#0F9D78]' : 'text-gray-400'}`} />
+                <ChevronDown size={14} className={`ml-1 transition-transform ${isOpen ? 'rotate-180 text-[#00c950]' : 'text-gray-400'}`} />
             </button>
 
             {isOpen && (
@@ -47,10 +47,10 @@ const FilterDropdown = ({ label, value, options, onChange, icon: Icon, className
                                 key={index}
                                 onClick={() => handleSelect(option)}
                                 className={`w-full text-left px-3 py-2 text-sm flex items-center gap-3 transition-colors
-                                ${isSelected ? 'bg-blue-50/50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}`}
+                                ${isSelected ? 'bg-[#00c950]/10 text-[#00c950] font-medium' : 'text-gray-700 hover:bg-gray-50'}`}
                             >
                                 <div className="w-4 flex items-center justify-center flex-shrink-0">
-                                    {isSelected && <Check size={14} className="text-blue-600" />}
+                                    {isSelected && <Check size={14} className="text-[#00c950]" />}
                                 </div>
                                 <span className="flex-1">{option}</span>
                             </button>
