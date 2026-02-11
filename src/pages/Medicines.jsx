@@ -750,8 +750,8 @@ const Medicines = () => {
                                 return (
                                     <tr key={index} className="hover:bg-slate-50 transition-colors border-b border-gray-50/50">
                                         <td className="px-5 py-4">
-                                            <div className="flex items-center justify-center w-5 h-5 border border-gray-200 rounded hover:border-[#0F9D78]/50 transition-colors cursor-pointer bg-white group">
-                                                <div className="w-2.5 h-2.5 bg-[#0F9D78] rounded-sm opacity-0 group-hover:opacity-10 transition-opacity"></div>
+                                            <div className="flex items-center justify-center w-5 h-5 border border-gray-200 rounded hover:border-[#00c950]/50 transition-colors cursor-pointer bg-white group">
+                                                <div className="w-2.5 h-2.5 bg-[#00c950] rounded-sm opacity-0 group-hover:opacity-10 transition-opacity"></div>
                                             </div>
                                         </td>
                                         <td className="px-4 py-4">
@@ -779,7 +779,7 @@ const Medicines = () => {
                                                 ? 'bg-rose-50 text-rose-500'
                                                 : group.totalStock <= 10
                                                     ? 'bg-orange-50 text-orange-400'
-                                                    : 'bg-emerald-50 text-emerald-500'
+                                                    : 'bg-[#00c950]/10 text-[#00c950]'
                                                 }`}>
                                                 {group.totalStock}
                                             </span>
@@ -793,7 +793,7 @@ const Medicines = () => {
                                                     ? 'bg-rose-50 text-rose-500'
                                                     : isExpiringSoon
                                                         ? 'bg-amber-50 text-amber-500'
-                                                        : 'bg-emerald-50/20 text-emerald-500'
+                                                        : 'bg-[#00c950]/10 text-[#00c950]'
                                                     }`}>
                                                     {expiryDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                                                 </span>
@@ -923,10 +923,6 @@ const Medicines = () => {
                     >
                         <ChevronRight size={18} />
                     </button>
-
-                    <div className="ml-2 text-sm text-gray-500">
-                        Built with <span className="text-red-500">♥</span> Lovable
-                    </div>
                 </div>
             </div>
 
