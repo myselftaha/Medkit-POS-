@@ -1,0 +1,861 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useToast } from '../context/ToastContext';
+import { Search, Plus, Filter, Package, ChevronLeft, ChevronRight, Upload, LayoutGrid, LayoutList, Printer, Download, AlertCircle, Clock, XCircle, DollarSign, MoreVertical, Edit, Trash2, Eye, FileText } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import MedicineDetailsModal from '../components/supplies/MedicineDetailsModal';
+import AddMedicineModal from '../components/supplies/AddMedicineModal';
+import EditSupplyModal from '../components/supplies/EditSupplyModal';
+import DeleteConfirmationModal from '../components/common/DeleteConfirmationModal';
+import ExcelImportModal from '../components/medicines/ExcelImportModal';
+import API_URL from '../config/api';
+
+const Medicines = () => {
+    const { showToast } = useToast();
+    const location = useLocation();
+
+    // State
+    const [medicines, setMedicines] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [selectedMedicineGroup, setSelectedMedicineGroup] = useState(null);
+    const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+    const [selectedMedicine, setSelectedMedicine] = useState(null);
+    const [medicineToDelete, setMedicineToDelete] = useState(null);
+    const [preSelectedSupplier, setPreSelectedSupplier] = useState(null);
+    const [suppliers, setSuppliers] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [viewMode, setViewMode] = useState('table');
+    const [openActionMenu, setOpenActionMenu] = useState(null);
+
+    // Stats State
+    const [stats, setStats] = useState({
+        totalMedicines: 0,
+        lowStockCount: 0,
+        expiringSoonCount: 0,
+        outOfStockCount: 0,
+        totalInventoryValue: 0,
+        manufacturers: [],
+        categories: []
+    });
+
+    // Filter State
+    const [filters, setFilters] = useState({
+        category: 'All Categories',
+        manufacturer: 'All Manufacturers',
+        stockLevel: 'All Stock',
+        expiryStatus: 'All Expiry'
+    });
+
+    // Pagination State
+    const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, pages: 1 });
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+
+    // Fetch data on mount
+    useEffect(() => {
+        fetchStats();
+        fetchMedicines(1);
+        fetchSuppliers();
+
+        if (location.state?.supplierId) {
+            setPreSelectedSupplier({
+                id: location.state.supplierId,
+                name: location.state.supplierName
+            });
+            setIsAddModalOpen(true);
+            window.history.replaceState({}, document.title);
+        }
+
+        if (location.state?.openAddSupply) {
+            setIsAddModalOpen(true);
+            window.history.replaceState({}, document.title);
+        }
+    }, [location.state]);
+
+    // Handle Search Debounce
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchQuery);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
+
+    // Re-fetch on search change
+    useEffect(() => {
+        fetchMedicines(1);
+    }, [debouncedSearch]);
+
+    const fetchStats = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_URL}/api/supplies/stats`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setStats(data);
+            }
+        } catch (error) {
+            console.error('Error fetching stats:', error);
+        }
+    };
+
+    const fetchMedicines = useCallback(async (page = 1) => {
+        try {
+            setLoading(true);
+            const token = localStorage.getItem('token');
+            const params = new URLSearchParams({
+                page,
+                limit: pagination.limit,
+                searchQuery: debouncedSearch
+            });
+
+            const response = await fetch(`${API_URL}/api/supplies?${params.toString()}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setMedicines(data.data || []);
+                setPagination(data.pagination || { page: 1, limit: 10, total: 0, pages: 1 });
+            } else {
+                showToast('Failed to fetch medicines', 'error');
+            }
+        } catch (error) {
+            console.error('Error fetching medicines:', error);
+            showToast('Error fetching medicines', 'error');
+        } finally {
+            setLoading(false);
+        }
+    }, [debouncedSearch, pagination.limit, showToast]);
+
+    // Grouping Logic
+    const groupedMedicines = useMemo(() => {
+        const groups = {};
+        const medicineIdsAddedPerGroup = {};
+
+        medicines.forEach(m => {
+            const nameKey = m.name?.trim().toLowerCase();
+            if (!nameKey) return;
+
+            if (!groups[nameKey]) {
+                groups[nameKey] = {
+                    name: m.name,
+                    totalStock: 0,
+                    batches: [],
+                    suppliers: new Set(),
+                    category: m.category,
+                    price: m.price || m.sellingPrice
+                };
+                medicineIdsAddedPerGroup[nameKey] = new Set();
+            }
+
+            groups[nameKey].batches.push(m);
+
+            if (m.medicineId && !medicineIdsAddedPerGroup[nameKey].has(m.medicineId.toString())) {
+                groups[nameKey].totalStock += (Number(m.currentStock) || 0);
+                medicineIdsAddedPerGroup[nameKey].add(m.medicineId.toString());
+            } else if (!m.medicineId) {
+                groups[nameKey].totalStock += (Number(m.currentStock) || 0);
+            }
+
+            if (m.supplierName) groups[nameKey].suppliers.add(m.supplierName);
+        });
+
+        let result = Object.values(groups).map(g => ({
+            ...g,
+            suppliers: Array.from(g.suppliers).join(', ')
+        }));
+
+        // Apply filters
+        if (filters.category !== 'All Categories') {
+            result = result.filter(m => m.category === filters.category);
+        }
+        if (filters.manufacturer !== 'All Manufacturers') {
+            result = result.filter(m => m.suppliers.includes(filters.manufacturer));
+        }
+        if (filters.stockLevel !== 'All Stock') {
+            if (filters.stockLevel === 'In Stock') {
+                result = result.filter(m => m.totalStock > 10);
+            } else if (filters.stockLevel === 'Low Stock') {
+                result = result.filter(m => m.totalStock > 0 && m.totalStock <= 10);
+            } else if (filters.stockLevel === 'Out of Stock') {
+                result = result.filter(m => m.totalStock === 0);
+            }
+        }
+
+        return result;
+    }, [medicines, filters]);
+
+    const fetchSuppliers = useCallback(async () => {
+        try {
+            const response = await fetch(`${API_URL}/api/suppliers`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            const data = await response.json();
+            setSuppliers(data);
+        } catch (error) {
+            console.error('Error fetching suppliers:', error);
+        }
+    }, []);
+
+    const handleSaveMedicine = async (medicineData) => {
+        try {
+            const response = await fetch(`${API_URL}/api/supplies`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify(medicineData)
+            });
+
+            if (response.ok) {
+                await fetchMedicines();
+                await fetchStats();
+                setIsAddModalOpen(false);
+                setPreSelectedSupplier(null);
+                showToast('Medicine added successfully!', 'success');
+            } else {
+                const errorData = await response.json();
+                showToast(errorData.message || 'Failed to add medicine', 'error');
+            }
+        } catch (error) {
+            console.error('Error saving medicine:', error);
+            showToast('Error saving medicine', 'error');
+        }
+    };
+
+    const handleEditMedicine = (medicine) => {
+        setSelectedMedicine(medicine);
+        setIsEditModalOpen(true);
+    };
+
+    const handleUpdateMedicine = async (updatedData) => {
+        try {
+            const response = await fetch(`${API_URL}/api/supplies/${selectedMedicine._id || selectedMedicine.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify(updatedData)
+            });
+
+            if (response.ok) {
+                await fetchMedicines();
+                await fetchStats();
+                setIsEditModalOpen(false);
+                setSelectedMedicine(null);
+                showToast('Medicine updated successfully!', 'success');
+            } else {
+                const errorData = await response.json();
+                showToast(errorData.message || 'Failed to update medicine', 'error');
+            }
+        } catch (error) {
+            console.error('Error updating medicine:', error);
+            showToast('Error updating medicine', 'error');
+        }
+    };
+
+    useEffect(() => {
+        if (selectedMedicineGroup) {
+            const updatedGroup = groupedMedicines.find(g => g.name === selectedMedicineGroup.name);
+            if (updatedGroup) {
+                setSelectedMedicineGroup(updatedGroup);
+            }
+        }
+    }, [groupedMedicines]);
+
+    const handleDeleteClick = (medicine) => {
+        setMedicineToDelete(medicine);
+        setIsDeleteModalOpen(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!medicineToDelete) return;
+
+        try {
+            const medicineId = medicineToDelete._id || medicineToDelete.id;
+            const response = await fetch(`${API_URL}/api/supplies/${medicineId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+
+            if (response.ok) {
+                await fetchMedicines();
+                await fetchStats();
+                setIsDeleteModalOpen(false);
+                setMedicineToDelete(null);
+                showToast('Medicine deleted successfully!', 'success');
+            } else {
+                const errorData = await response.json();
+                showToast(errorData.message || 'Failed to delete medicine', 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting medicine:', error);
+            showToast('Error deleting medicine', 'error');
+        }
+    };
+
+    const handleSyncStock = async (medicineGroup, calculatedTotal) => {
+        if (!medicineGroup || !medicineGroup.batches.length) return;
+
+        const firstBatch = medicineGroup.batches[0];
+        const medicineId = firstBatch.medicineId;
+
+        if (!medicineId) {
+            showToast('Cannot sync: Missing Medicine ID', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/api/medicines/${medicineId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ stock: calculatedTotal })
+            });
+
+            if (response.ok) {
+                await fetchMedicines();
+                await fetchStats();
+                showToast('Stock synchronized successfully!', 'success');
+            } else {
+                const errorData = await response.json();
+                showToast(errorData.message || 'Failed to sync stock', 'error');
+            }
+        } catch (error) {
+            console.error('Error syncing stock:', error);
+            showToast('Error syncing stock', 'error');
+        }
+    };
+
+    const handleViewDetails = (group) => {
+        setSelectedMedicineGroup(group);
+        setIsDetailsModalOpen(true);
+    };
+
+    const handleExcelImport = async (excelData) => {
+        try {
+            const response = await fetch(`${API_URL}/api/medicines/bulk-import`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ medicines: excelData })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                showToast(result.message, result.results.failed > 0 ? 'warning' : 'success');
+                await fetchMedicines();
+                await fetchStats();
+                return result;
+            } else {
+                showToast(result.message || 'Import failed', 'error');
+                throw new Error(result.message);
+            }
+        } catch (error) {
+            console.error('Error importing medicines:', error);
+            showToast('Error importing medicines', 'error');
+            throw error;
+        }
+    };
+
+    const resetFilters = () => {
+        setFilters({
+            category: 'All Categories',
+            manufacturer: 'All Manufacturers',
+            stockLevel: 'All Stock',
+            expiryStatus: 'All Expiry'
+        });
+    };
+
+    const handleExport = () => {
+        // Export medicines data as CSV
+        const csvData = groupedMedicines.map(m => ({
+            Name: m.name,
+            Category: m.category || 'N/A',
+            Stock: m.totalStock,
+            Price: `Rs. ${m.price || 0}`,
+            Manufacturer: m.suppliers
+        }));
+
+        const csv = [
+            ['Name', 'Category', 'Stock', 'Price', 'Manufacturer'],
+            ...csvData.map(row => [row.Name, row.Category, row.Stock, row.Price, row.Manufacturer])
+        ].map(row => row.join(',')).join('\n');
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'medicines.csv';
+        a.click();
+        showToast('Medicines exported successfully!', 'success');
+    };
+
+    const handlePrint = () => {
+        window.print();
+        showToast('Print dialog opened', 'success');
+    };
+
+    return (
+        <div className="flex flex-col h-full overflow-hidden bg-gray-50">
+            {/* Header */}
+            <div className="bg-white border-b border-gray-100 px-6 py-4 flex-shrink-0">
+                <div className="flex justify-between items-center">
+                    <div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
+                                <FileText className="text-white" size={20} />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-900">Medicine Management</h2>
+                                <p className="text-sm text-gray-500">Pharmacy Inventory System</p>
+                            </div>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => setIsAddModalOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
+                    >
+                        <Plus size={18} />
+                        <span>Add Medicine</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* Stats Cards */}
+            <div className="px-6 py-4 grid grid-cols-5 gap-4 flex-shrink-0">
+                <div className="bg-white rounded-lg p-4 border border-gray-100">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <p className="text-sm text-gray-500 mb-1">Total Medicines</p>
+                            <p className="text-2xl font-bold text-blue-600">{stats.totalMedicines}</p>
+                        </div>
+                        <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
+                            <Package className="text-blue-600" size={20} />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-lg p-4 border border-gray-100">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <p className="text-sm text-gray-500 mb-1">Low Stock</p>
+                            <p className="text-2xl font-bold text-amber-600">{stats.lowStockCount}</p>
+                        </div>
+                        <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
+                            <AlertCircle className="text-amber-600" size={20} />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-lg p-4 border border-gray-100">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <p className="text-sm text-gray-500 mb-1">Expiring Soon</p>
+                            <p className="text-2xl font-bold text-orange-600">{stats.expiringSoonCount}</p>
+                        </div>
+                        <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center">
+                            <Clock className="text-orange-600" size={20} />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-lg p-4 border border-gray-100">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <p className="text-sm text-gray-500 mb-1">Out of Stock</p>
+                            <p className="text-2xl font-bold text-red-600">{stats.outOfStockCount}</p>
+                        </div>
+                        <div className="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center">
+                            <XCircle className="text-red-600" size={20} />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-lg p-4 border border-gray-100">
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <p className="text-sm text-gray-500 mb-1">Inventory Value</p>
+                            <p className="text-2xl font-bold text-green-600">Rs. {stats.totalInventoryValue.toLocaleString()}</p>
+                        </div>
+                        <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
+                            <DollarSign className="text-green-600" size={20} />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Search and Filters */}
+            <div className="px-6 py-4 bg-white flex-shrink-0">
+                <div className="flex items-center gap-4">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Search by name, generic, barcode..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all"
+                        />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <Filter className="text-gray-400" size={18} />
+
+                        <select
+                            value={filters.category}
+                            onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900"
+                        >
+                            <option>All Categories</option>
+                            {stats.categories.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={filters.manufacturer}
+                            onChange={(e) => setFilters({ ...filters, manufacturer: e.target.value })}
+                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900"
+                        >
+                            <option>All Manufacturers</option>
+                            {stats.manufacturers.map(man => (
+                                <option key={man} value={man}>{man}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={filters.stockLevel}
+                            onChange={(e) => setFilters({ ...filters, stockLevel: e.target.value })}
+                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900"
+                        >
+                            <option>All Stock</option>
+                            <option>In Stock</option>
+                            <option>Low Stock</option>
+                            <option>Out of Stock</option>
+                        </select>
+
+                        <select
+                            value={filters.expiryStatus}
+                            onChange={(e) => setFilters({ ...filters, expiryStatus: e.target.value })}
+                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900"
+                        >
+                            <option>All Expiry</option>
+                            <option>Expiring Soon</option>
+                            <option>Valid</option>
+                        </select>
+
+                        <button
+                            onClick={resetFilters}
+                            className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                            Reset
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Table Actions Bar */}
+            <div className="px-6 py-3 bg-white border-y border-gray-100 flex items-center justify-between flex-shrink-0">
+                <p className="text-sm text-gray-600">
+                    {groupedMedicines.length} medicines found
+                </p>
+
+                <div className="flex items-center gap-2">
+                    <button className="p-2 hover:bg-gray-50 rounded-lg border border-gray-200">
+                        <LayoutGrid size={18} className="text-gray-600" />
+                    </button>
+                    <button className="p-2 bg-gray-900 rounded-lg">
+                        <LayoutList size={18} className="text-white" />
+                    </button>
+
+                    <div className="w-px h-6 bg-gray-200 mx-2"></div>
+
+                    <button
+                        onClick={handleExport}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-lg transition-colors"
+                    >
+                        <Download size={16} />
+                        Export
+                    </button>
+
+                    <button
+                        onClick={handlePrint}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-lg transition-colors"
+                    >
+                        <Printer size={16} />
+                        Print
+                    </button>
+                </div>
+            </div>
+
+            {/* Table */}
+            <div className="flex-1 overflow-auto bg-white mx-6 mb-6 rounded-lg border border-gray-100">
+                <table className="w-full">
+                    <thead className="bg-gray-50 sticky top-0">
+                        <tr className="border-b border-gray-200">
+                            <th className="px-4 py-3 text-left">
+                                <input type="checkbox" className="rounded border-gray-300" />
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                Medicine Name ↕
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                Category ↕
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                Manufacturer ↕
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                Batch No.
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                Stock ↕
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                Price ↕
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                Expiry Date ↕
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                Status
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                Actions
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {loading ? (
+                            <tr>
+                                <td colSpan="10" className="px-4 py-12 text-center text-gray-500">
+                                    Loading medicines...
+                                </td>
+                            </tr>
+                        ) : groupedMedicines.length === 0 ? (
+                            <tr>
+                                <td colSpan="10" className="px-4 py-12 text-center text-gray-500">
+                                    No medicines found
+                                </td>
+                            </tr>
+                        ) : (
+                            groupedMedicines.map((group, index) => {
+                                const firstBatch = group.batches[0];
+                                const expiryDate = firstBatch?.expiryDate ? new Date(firstBatch.expiryDate) : null;
+                                const now = new Date();
+                                const isExpired = expiryDate && expiryDate < now;
+                                const isExpiringSoon = expiryDate && !isExpired && expiryDate < new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+                                return (
+                                    <tr key={index} className="hover:bg-gray-50 transition-colors">
+                                        <td className="px-4 py-3">
+                                            <input type="checkbox" className="rounded border-gray-300" />
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div>
+                                                <p className="font-medium text-gray-900">{group.name}</p>
+                                                <p className="text-sm text-gray-500">{firstBatch?.description || 'N/A'}</p>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-gray-700">{group.category || 'Capsule'}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-700">{group.suppliers || 'N/A'}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-700">{firstBatch?.batchNumber || 'N/A'}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${group.totalStock === 0
+                                                ? 'bg-red-50 text-red-700'
+                                                : group.totalStock <= 10
+                                                    ? 'bg-amber-50 text-amber-700'
+                                                    : 'bg-green-50 text-green-700'
+                                                }`}>
+                                                {group.totalStock}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                            Rs. {group.price || 0}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            {expiryDate ? (
+                                                <span className={`text-sm ${isExpired ? 'text-red-600 font-medium' : isExpiringSoon ? 'text-orange-600 font-medium' : 'text-green-600'
+                                                    }`}>
+                                                    {expiryDate.toLocaleDateString()}
+                                                </span>
+                                            ) : (
+                                                <span className="text-sm text-gray-400">N/A</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+                                                Rx
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => setOpenActionMenu(openActionMenu === index ? null : index)}
+                                                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                                                >
+                                                    <MoreVertical size={16} className="text-gray-600" />
+                                                </button>
+
+                                                {openActionMenu === index && (
+                                                    <>
+                                                        <div
+                                                            className="fixed inset-0 z-10"
+                                                            onClick={() => setOpenActionMenu(null)}
+                                                        ></div>
+                                                        <div className="absolute right-0 top-8 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                                                            <button
+                                                                onClick={() => {
+                                                                    handleViewDetails(group);
+                                                                    setOpenActionMenu(null);
+                                                                }}
+                                                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                                                            >
+                                                                <Eye size={16} className="text-gray-600" />
+                                                                View Details
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    handleEditMedicine(firstBatch);
+                                                                    setOpenActionMenu(null);
+                                                                }}
+                                                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                                                            >
+                                                                <Edit size={16} className="text-gray-600" />
+                                                                Edit
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setIsAddModalOpen(true);
+                                                                    setOpenActionMenu(null);
+                                                                }}
+                                                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3"
+                                                            >
+                                                                <Package size={16} className="text-gray-600" />
+                                                                Add Stock
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    handleDeleteClick(firstBatch);
+                                                                    setOpenActionMenu(null);
+                                                                }}
+                                                                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-3"
+                                                            >
+                                                                <Trash2 size={16} className="text-red-600" />
+                                                                Delete
+                                                            </button>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Pagination */}
+            <div className="px-6 py-4 bg-white border-t border-gray-100 flex items-center justify-between flex-shrink-0">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Showing</span>
+                    <select
+                        value={pagination.limit}
+                        onChange={(e) => setPagination({ ...pagination, limit: parseInt(e.target.value) })}
+                        className="px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                    >
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
+                    <span className="text-sm text-gray-600">of {groupedMedicines.length} medicines</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => fetchMedicines(pagination.page - 1)}
+                        disabled={pagination.page <= 1}
+                        className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        <ChevronLeft size={18} />
+                    </button>
+
+                    <div className="flex items-center gap-1">
+                        <span className="px-3 py-1.5 text-sm font-medium">
+                            Page {pagination.page} of {pagination.pages}
+                        </span>
+                    </div>
+
+                    <button
+                        onClick={() => fetchMedicines(pagination.page + 1)}
+                        disabled={pagination.page >= pagination.pages}
+                        className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        <ChevronRight size={18} />
+                    </button>
+
+                    <div className="ml-2 text-sm text-gray-500">
+                        Built with <span className="text-red-500">♥</span> Lovable
+                    </div>
+                </div>
+            </div>
+
+            {/* MODALS */}
+            <MedicineDetailsModal
+                isOpen={isDetailsModalOpen}
+                onClose={() => setIsDetailsModalOpen(false)}
+                medicineGroup={selectedMedicineGroup}
+                onEdit={handleEditMedicine}
+                onDelete={handleDeleteClick}
+                onSyncStock={handleSyncStock}
+            />
+
+            <AddMedicineModal
+                isOpen={isAddModalOpen}
+                onClose={() => {
+                    setIsAddModalOpen(false);
+                    setPreSelectedSupplier(null);
+                }}
+                onSave={handleSaveMedicine}
+                suppliers={suppliers}
+                initialSupplier={preSelectedSupplier}
+            />
+
+            <EditSupplyModal
+                isOpen={isEditModalOpen}
+                onClose={() => setIsEditModalOpen(false)}
+                onSave={handleUpdateMedicine}
+                supply={selectedMedicine}
+                suppliers={suppliers}
+            />
+
+            <DeleteConfirmationModal
+                isOpen={isDeleteModalOpen}
+                onClose={() => setIsDeleteModalOpen(false)}
+                onConfirm={confirmDelete}
+                itemName={medicineToDelete?.name}
+            />
+
+            <ExcelImportModal
+                isOpen={isImportModalOpen}
+                onClose={() => setIsImportModalOpen(false)}
+                onImport={handleExcelImport}
+            />
+        </div>
+    );
+};
+
+export default Medicines;
