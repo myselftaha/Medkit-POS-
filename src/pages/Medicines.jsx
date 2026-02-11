@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from '../context/ToastContext';
-import { Search, Plus, Filter, Package, ChevronLeft, ChevronRight, Upload, LayoutGrid, LayoutList, Printer, Download, AlertCircle, Clock, XCircle, DollarSign, MoreVertical, Edit, Trash2, Eye, FileText } from 'lucide-react';
+import { Search, Plus, Filter, Package, ChevronLeft, ChevronRight, Upload, LayoutGrid, LayoutList, Printer, Download, AlertCircle, Clock, XCircle, DollarSign, MoreVertical, Edit, Trash2, Eye, FileText, RefreshCw, ChevronDown } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import MedicineDetailsModal from '../components/supplies/MedicineDetailsModal';
 import AddMedicineModal from '../components/supplies/AddMedicineModal';
@@ -432,72 +432,12 @@ const Medicines = () => {
                 </div>
             </div>
 
-            {/* Stats Cards */}
-            <div className="px-6 py-4 grid grid-cols-5 gap-4 flex-shrink-0">
-                <div className="bg-white rounded-lg p-4 border border-gray-100">
-                    <div className="flex items-start justify-between">
-                        <div>
-                            <p className="text-sm text-gray-500 mb-1">Total Medicines</p>
-                            <p className="text-2xl font-bold text-blue-600">{stats.totalMedicines}</p>
-                        </div>
-                        <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-                            <Package className="text-blue-600" size={20} />
-                        </div>
-                    </div>
-                </div>
 
-                <div className="bg-white rounded-lg p-4 border border-gray-100">
-                    <div className="flex items-start justify-between">
-                        <div>
-                            <p className="text-sm text-gray-500 mb-1">Low Stock</p>
-                            <p className="text-2xl font-bold text-amber-600">{stats.lowStockCount}</p>
-                        </div>
-                        <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
-                            <AlertCircle className="text-amber-600" size={20} />
-                        </div>
-                    </div>
-                </div>
 
-                <div className="bg-white rounded-lg p-4 border border-gray-100">
-                    <div className="flex items-start justify-between">
-                        <div>
-                            <p className="text-sm text-gray-500 mb-1">Expiring Soon</p>
-                            <p className="text-2xl font-bold text-orange-600">{stats.expiringSoonCount}</p>
-                        </div>
-                        <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center">
-                            <Clock className="text-orange-600" size={20} />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white rounded-lg p-4 border border-gray-100">
-                    <div className="flex items-start justify-between">
-                        <div>
-                            <p className="text-sm text-gray-500 mb-1">Out of Stock</p>
-                            <p className="text-2xl font-bold text-red-600">{stats.outOfStockCount}</p>
-                        </div>
-                        <div className="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center">
-                            <XCircle className="text-red-600" size={20} />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white rounded-lg p-4 border border-gray-100">
-                    <div className="flex items-start justify-between">
-                        <div>
-                            <p className="text-sm text-gray-500 mb-1">Inventory Value</p>
-                            <p className="text-2xl font-bold text-green-600">Rs. {stats.totalInventoryValue.toLocaleString()}</p>
-                        </div>
-                        <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
-                            <DollarSign className="text-green-600" size={20} />
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Search and Filters */}
-            <div className="px-6 py-4 bg-white flex-shrink-0">
-                <div className="flex items-center gap-4">
+            {/* Search, Filters, Actions Container */}
+            <div className="bg-white flex-col flex-shrink-0 border border-gray-200 shadow-sm rounded-lg mx-6 mb-4">
+                {/* Row 1: Search & View Toggle */}
+                <div className="px-4 py-3 flex items-center justify-between gap-4 border-b border-gray-100">
                     <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                         <input
@@ -505,97 +445,110 @@ const Medicines = () => {
                             placeholder="Search by name, generic, barcode..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all"
+                            className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-[#0F9D78]/10 focus:border-[#0F9D78] transition-all"
                         />
                     </div>
-
-                    <div className="flex items-center gap-2">
-                        <Filter className="text-gray-400" size={18} />
-
-                        <select
-                            value={filters.category}
-                            onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900"
-                        >
-                            <option>All Categories</option>
-                            {stats.categories.map(cat => (
-                                <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                        </select>
-
-                        <select
-                            value={filters.manufacturer}
-                            onChange={(e) => setFilters({ ...filters, manufacturer: e.target.value })}
-                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900"
-                        >
-                            <option>All Manufacturers</option>
-                            {stats.manufacturers.map(man => (
-                                <option key={man} value={man}>{man}</option>
-                            ))}
-                        </select>
-
-                        <select
-                            value={filters.stockLevel}
-                            onChange={(e) => setFilters({ ...filters, stockLevel: e.target.value })}
-                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900"
-                        >
-                            <option>All Stock</option>
-                            <option>In Stock</option>
-                            <option>Low Stock</option>
-                            <option>Out of Stock</option>
-                        </select>
-
-                        <select
-                            value={filters.expiryStatus}
-                            onChange={(e) => setFilters({ ...filters, expiryStatus: e.target.value })}
-                            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900"
-                        >
-                            <option>All Expiry</option>
-                            <option>Expiring Soon</option>
-                            <option>Valid</option>
-                        </select>
-
+                    <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
                         <button
-                            onClick={resetFilters}
-                            className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                            onClick={() => setViewMode('table')}
+                            className={`p-1.5 rounded-md transition-all ${viewMode === 'table' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
                         >
-                            Reset
+                            <LayoutList size={18} />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('grid')}
+                            className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <LayoutGrid size={18} />
                         </button>
                     </div>
                 </div>
-            </div>
 
-            {/* Table Actions Bar */}
-            <div className="px-6 py-3 bg-white border-y border-gray-100 flex items-center justify-between flex-shrink-0">
-                <p className="text-sm text-gray-600">
-                    {groupedMedicines.length} medicines found
-                </p>
+                {/* Row 2: Filters */}
+                <div className="px-4 py-3 flex items-center gap-3 overflow-x-auto no-scrollbar border-b border-gray-100">
+                    <div className="flex items-center gap-2 text-gray-500 text-sm font-medium mr-2">
+                        <Filter size={16} />
+                        <span>Filters:</span>
+                    </div>
 
-                <div className="flex items-center gap-2">
-                    <button className="p-2 hover:bg-gray-50 rounded-lg border border-gray-200">
-                        <LayoutGrid size={18} className="text-gray-600" />
-                    </button>
-                    <button className="p-2 bg-gray-900 rounded-lg">
-                        <LayoutList size={18} className="text-white" />
-                    </button>
+                    <select
+                        value={filters.category}
+                        onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+                        className="px-3 py-1.5 border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:border-[#0F9D78] bg-white cursor-pointer hover:border-gray-300 transition-colors"
+                    >
+                        <option>All Categories</option>
+                        {stats.categories.map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                    </select>
 
-                    <div className="w-px h-6 bg-gray-200 mx-2"></div>
+                    <select
+                        value={filters.manufacturer}
+                        onChange={(e) => setFilters({ ...filters, manufacturer: e.target.value })}
+                        className="px-3 py-1.5 border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:border-[#0F9D78] bg-white cursor-pointer hover:border-gray-300 transition-colors"
+                    >
+                        <option>All Manufacturers</option>
+                        {stats.manufacturers.map(man => (
+                            <option key={man} value={man}>{man}</option>
+                        ))}
+                    </select>
+
+                    <select
+                        value={filters.stockLevel}
+                        onChange={(e) => setFilters({ ...filters, stockLevel: e.target.value })}
+                        className="px-3 py-1.5 border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:border-[#0F9D78] bg-white cursor-pointer hover:border-gray-300 transition-colors"
+                    >
+                        <option>All Stock</option>
+                        <option>In Stock</option>
+                        <option>Low Stock</option>
+                        <option>Out of Stock</option>
+                    </select>
+
+                    <select
+                        value={filters.expiryStatus}
+                        onChange={(e) => setFilters({ ...filters, expiryStatus: e.target.value })}
+                        className="px-3 py-1.5 border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:border-[#0F9D78] bg-white cursor-pointer hover:border-gray-300 transition-colors"
+                    >
+                        <option>All Expiry</option>
+                        <option>Valid</option>
+                        <option>Expiring Soon</option>
+                        <option>Expired</option>
+                    </select>
 
                     <button
-                        onClick={handleExport}
-                        className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-lg transition-colors"
+                        onClick={resetFilters}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors ml-4"
                     >
-                        <Download size={16} />
-                        Export
+                        <RefreshCw size={14} />
+                        Reset
                     </button>
+                </div>
 
-                    <button
-                        onClick={handlePrint}
-                        className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-lg transition-colors"
-                    >
-                        <Printer size={16} />
-                        Print
-                    </button>
+                {/* Row 3: Results & Actions */}
+                <div className="px-4 py-3 flex items-center justify-between">
+                    <p className="text-sm text-gray-500">
+                        {groupedMedicines.length} medicines found
+                    </p>
+
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={handleExport}
+                            className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-md transition-colors bg-white"
+                        >
+                            <Download size={14} />
+                            Export
+                            <ChevronDown size={14} className="text-gray-400 ml-1" />
+                        </button>
+
+                        <button
+                            onClick={handlePrint}
+                            className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-md transition-colors bg-white"
+                        >
+                            <Printer size={14} />
+                            Print
+                            <ChevronDown size={14} className="text-gray-400 ml-1" />
+                        </button>
+                    </div>
                 </div>
             </div>
 
