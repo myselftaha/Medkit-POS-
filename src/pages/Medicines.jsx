@@ -8,6 +8,7 @@ import EditSupplyModal from '../components/supplies/EditSupplyModal';
 import DeleteConfirmationModal from '../components/common/DeleteConfirmationModal';
 import ExcelImportModal from '../components/medicines/ExcelImportModal';
 import API_URL from '../config/api';
+import FilterDropdown from '../components/common/FilterDropdown';
 
 const Medicines = () => {
     const { showToast } = useToast();
@@ -47,7 +48,8 @@ const Medicines = () => {
         category: 'All Categories',
         manufacturer: 'All Manufacturers',
         stockLevel: 'All Stock',
-        expiryStatus: 'All Expiry'
+        expiryStatus: 'All Expiry',
+        prescription: 'All'
     });
 
     // Pagination State
@@ -131,6 +133,16 @@ const Medicines = () => {
         }
     }, [debouncedSearch, pagination.limit, showToast]);
 
+    const CATEGORIES = ['All Categories', 'Tablet', 'Capsule', 'Syrup', 'Injection', 'Cream', 'Ointment', 'Drops', 'Inhaler', 'Powder', 'Suspension', 'Gel', 'Suppository'];
+
+    const uniqueSuppliers = useMemo(() => {
+        const suppliersList = new Set();
+        medicines.forEach(m => {
+            if (m.supplierName) suppliersList.add(m.supplierName);
+        });
+        return ['All Manufacturers', ...Array.from(suppliersList).sort()];
+    }, [medicines]);
+
     // Grouping Logic
     const groupedMedicines = useMemo(() => {
         const groups = {};
@@ -148,7 +160,8 @@ const Medicines = () => {
                     batches: [],
                     suppliers: new Set(),
                     category: m.category,
-                    price: m.price || m.sellingPrice
+                    price: m.price || m.sellingPrice,
+                    prescriptionRequired: m.prescriptionRequired
                 };
                 medicineIdsAddedPerGroup[nameKey] = new Set();
             }
@@ -185,6 +198,34 @@ const Medicines = () => {
             } else if (filters.stockLevel === 'Out of Stock') {
                 result = result.filter(m => m.totalStock === 0);
             }
+        }
+        if (filters.expiryStatus !== 'All Expiry') {
+            const today = new Date();
+            const soon = new Date();
+            soon.setDate(soon.getDate() + 30);
+
+            result = result.filter(m => {
+                const expiringSoon = m.batches.some(b => {
+                    const expiryData = b.expiryDate ? new Date(b.expiryDate) : null;
+                    return expiryData && expiryData > today && expiryData <= soon;
+                });
+                const expired = m.batches.some(b => {
+                    const expiryData = b.expiryDate ? new Date(b.expiryDate) : null;
+                    return expiryData && expiryData <= today;
+                });
+
+                if (filters.expiryStatus === 'Valid') return !expired && !expiringSoon;
+                if (filters.expiryStatus === 'Expiring Soon') return expiringSoon;
+                if (filters.expiryStatus === 'Expired') return expired;
+                return true;
+            });
+        }
+        if (filters.prescription !== 'All') {
+            result = result.filter(m => {
+                if (filters.prescription === 'Rx Required') return m.prescriptionRequired;
+                if (filters.prescription === 'OTC') return !m.prescriptionRequired;
+                return true;
+            });
         }
 
         return result;
@@ -375,7 +416,8 @@ const Medicines = () => {
             category: 'All Categories',
             manufacturer: 'All Manufacturers',
             stockLevel: 'All Stock',
-            expiryStatus: 'All Expiry'
+            expiryStatus: 'All Expiry',
+            prescription: 'All'
         });
     };
 
@@ -541,55 +583,46 @@ const Medicines = () => {
                 </div>
 
                 {/* Row 2: Filters */}
-                <div className="px-4 py-3 flex items-center gap-3 overflow-x-auto no-scrollbar border-b border-gray-100">
+                <div className="px-4 py-3 flex items-center gap-3 border-b border-gray-100 relative z-20">
                     <div className="flex items-center gap-2 text-gray-500 text-sm font-medium mr-2">
                         <Filter size={16} />
                         <span>Filters:</span>
                     </div>
 
-                    <select
+                    <FilterDropdown
+                        label="Category"
                         value={filters.category}
-                        onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-                        className="px-3 py-1.5 border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:border-[#0F9D78] bg-white cursor-pointer hover:border-gray-300 transition-colors"
-                    >
-                        <option>All Categories</option>
-                        {stats.categories.map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                    </select>
+                        options={CATEGORIES}
+                        onChange={(val) => setFilters({ ...filters, category: val })}
+                    />
 
-                    <select
+                    <FilterDropdown
+                        label="Manufacturer"
                         value={filters.manufacturer}
-                        onChange={(e) => setFilters({ ...filters, manufacturer: e.target.value })}
-                        className="px-3 py-1.5 border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:border-[#0F9D78] bg-white cursor-pointer hover:border-gray-300 transition-colors"
-                    >
-                        <option>All Manufacturers</option>
-                        {stats.manufacturers.map(man => (
-                            <option key={man} value={man}>{man}</option>
-                        ))}
-                    </select>
+                        options={uniqueSuppliers}
+                        onChange={(val) => setFilters({ ...filters, manufacturer: val })}
+                    />
 
-                    <select
+                    <FilterDropdown
+                        label="Stock Level"
                         value={filters.stockLevel}
-                        onChange={(e) => setFilters({ ...filters, stockLevel: e.target.value })}
-                        className="px-3 py-1.5 border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:border-[#0F9D78] bg-white cursor-pointer hover:border-gray-300 transition-colors"
-                    >
-                        <option>All Stock</option>
-                        <option>In Stock</option>
-                        <option>Low Stock</option>
-                        <option>Out of Stock</option>
-                    </select>
+                        options={['All Stock', 'In Stock', 'Low Stock', 'Out of Stock']}
+                        onChange={(val) => setFilters({ ...filters, stockLevel: val })}
+                    />
 
-                    <select
+                    <FilterDropdown
+                        label="Expiry Status"
                         value={filters.expiryStatus}
-                        onChange={(e) => setFilters({ ...filters, expiryStatus: e.target.value })}
-                        className="px-3 py-1.5 border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:border-[#0F9D78] bg-white cursor-pointer hover:border-gray-300 transition-colors"
-                    >
-                        <option>All Expiry</option>
-                        <option>Valid</option>
-                        <option>Expiring Soon</option>
-                        <option>Expired</option>
-                    </select>
+                        options={['All Expiry', 'Valid', 'Expiring Soon', 'Expired']}
+                        onChange={(val) => setFilters({ ...filters, expiryStatus: val })}
+                    />
+
+                    <FilterDropdown
+                        label="Prescription"
+                        value={filters.prescription}
+                        options={['All', 'Rx Required', 'OTC']}
+                        onChange={(val) => setFilters({ ...filters, prescription: val })}
+                    />
 
                     <button
                         onClick={resetFilters}
