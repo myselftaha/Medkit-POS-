@@ -525,13 +525,13 @@ const Medicines = () => {
     };
 
     return (
-        <div className="flex flex-col h-full overflow-hidden bg-gray-50">
+        <div className="min-h-screen bg-gray-50 flex flex-col">
             {/* Header */}
             <div className="bg-white border-b border-gray-100 px-6 py-4 flex-shrink-0">
                 <div className="flex justify-between items-center">
                     <div>
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
+                            <div className="w-10 h-10 bg-[#0F9D78] rounded-lg flex items-center justify-center">
                                 <FileText className="text-white" size={20} />
                             </div>
                             <div>
@@ -542,7 +542,7 @@ const Medicines = () => {
                     </div>
                     <button
                         onClick={() => setIsAddModalOpen(true)}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-[#0F9D78] text-white rounded-lg font-medium hover:bg-[#0D8A6A] transition-colors"
                     >
                         <Plus size={18} />
                         <span>Add Medicine</span>
@@ -569,13 +569,13 @@ const Medicines = () => {
                     <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
                         <button
                             onClick={() => setViewMode('table')}
-                            className={`p-1.5 rounded-md transition-all ${viewMode === 'table' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`p-1.5 rounded-md transition-all ${viewMode === 'table' ? 'bg-white shadow-sm text-[#0F9D78]' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                             <LayoutList size={18} />
                         </button>
                         <button
                             onClick={() => setViewMode('grid')}
-                            className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-[#0F9D78]' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                             <LayoutGrid size={18} />
                         </button>
@@ -675,39 +675,53 @@ const Medicines = () => {
                 </div>
             </div>
 
-            {/* Table */}
-            <div className="flex-1 overflow-auto bg-white mx-6 mb-6 rounded-lg border border-gray-100">
+            {/* Table wrapper - removed overflow-auto to enable page-level scrolling */}
+            <div className="bg-white mx-6 mb-6 rounded-lg border border-gray-100 shadow-sm overflow-hidden">
                 <table className="w-full">
-                    <thead className="bg-gray-50 sticky top-0">
-                        <tr className="border-b border-gray-200">
-                            <th className="px-4 py-3 text-left">
-                                <input type="checkbox" className="rounded border-gray-300" />
+                    <thead className="bg-[#f8fafc] border-b border-gray-100">
+                        <tr>
+                            <th className="px-5 py-4 text-left w-12">
+                                <div className="flex items-center justify-center w-5 h-5 border border-gray-200 rounded hover:border-[#0F9D78]/50 transition-colors cursor-pointer bg-white group">
+                                    {/* Custom Checkbox UI */}
+                                </div>
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
-                                Medicine Name ↕
+                            <th className="px-4 py-4 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                                <div className="flex items-center gap-1.5 cursor-pointer hover:text-slate-600 transition-colors">
+                                    Medicine Name <ChevronDown size={12} className="text-slate-300" />
+                                </div>
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
-                                Category ↕
+                            <th className="px-4 py-4 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                                <div className="flex items-center gap-1.5 cursor-pointer hover:text-slate-600 transition-colors">
+                                    Category <RefreshCw size={10} className="text-slate-300 rotate-90" />
+                                </div>
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
-                                Manufacturer ↕
+                            <th className="px-4 py-4 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                                <div className="flex items-center gap-1.5 cursor-pointer hover:text-slate-600 transition-colors">
+                                    Manufacturer <RefreshCw size={10} className="text-slate-300 rotate-90" />
+                                </div>
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            <th className="px-4 py-4 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                                 Batch No.
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
-                                Stock ↕
+                            <th className="px-4 py-4 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                                <div className="flex items-center gap-1.5 cursor-pointer hover:text-slate-600 transition-colors">
+                                    Stock <RefreshCw size={10} className="text-slate-300 rotate-90" />
+                                </div>
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
-                                Price ↕
+                            <th className="px-4 py-4 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                                <div className="flex items-center gap-1.5 cursor-pointer hover:text-slate-600 transition-colors">
+                                    Price <RefreshCw size={10} className="text-slate-300 rotate-90" />
+                                </div>
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
-                                Expiry Date ↕
+                            <th className="px-4 py-4 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                                <div className="flex items-center gap-1.5 cursor-pointer hover:text-slate-600 transition-colors">
+                                    Expiry Date <RefreshCw size={10} className="text-slate-300 rotate-90" />
+                                </div>
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            <th className="px-4 py-4 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                                 Status
                             </th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                            <th className="px-4 py-4 text-center text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                                 Actions
                             </th>
                         </tr>
@@ -734,54 +748,66 @@ const Medicines = () => {
                                 const isExpiringSoon = expiryDate && !isExpired && expiryDate < new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
                                 return (
-                                    <tr key={index} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-4 py-3">
-                                            <input type="checkbox" className="rounded border-gray-300" />
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div>
-                                                <p className="font-medium text-gray-900">{group.name}</p>
-                                                <p className="text-sm text-gray-500">{firstBatch?.description || 'N/A'}</p>
+                                    <tr key={index} className="hover:bg-slate-50 transition-colors border-b border-gray-50/50">
+                                        <td className="px-5 py-4">
+                                            <div className="flex items-center justify-center w-5 h-5 border border-gray-200 rounded hover:border-[#0F9D78]/50 transition-colors cursor-pointer bg-white group">
+                                                <div className="w-2.5 h-2.5 bg-[#0F9D78] rounded-sm opacity-0 group-hover:opacity-10 transition-opacity"></div>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 text-sm text-gray-700">{group.category || 'Capsule'}</td>
-                                        <td className="px-4 py-3 text-sm text-gray-700">{group.suppliers || 'N/A'}</td>
-                                        <td className="px-4 py-3 text-sm text-gray-700">{firstBatch?.batchNumber || 'N/A'}</td>
-                                        <td className="px-4 py-3">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${group.totalStock === 0
-                                                ? 'bg-red-50 text-red-700'
+                                        <td className="px-4 py-4">
+                                            <div>
+                                                <p className="font-semibold text-[14px] text-slate-700 mb-0.5">{group.name}</p>
+                                                <p className="text-[12px] text-slate-400 font-medium leading-tight">{group.genericName}</p>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-4">
+                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-medium border border-slate-100 bg-slate-50/50 text-slate-500">
+                                                {group.category || 'Tablets'}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-4 text-[13px] font-medium text-slate-500">{group.suppliers || 'N/A'}</td>
+                                        <td className="px-4 py-4 text-[13px] font-medium text-slate-500 tracking-tight">{firstBatch?.batchNumber || 'N/A'}</td>
+                                        <td className="px-4 py-4">
+                                            <span className={`inline-flex items-center px-4 py-1 rounded-full text-[12px] font-bold ${group.totalStock === 0
+                                                ? 'bg-rose-50 text-rose-500'
                                                 : group.totalStock <= 10
-                                                    ? 'bg-amber-50 text-amber-700'
-                                                    : 'bg-green-50 text-green-700'
+                                                    ? 'bg-orange-50 text-orange-400'
+                                                    : 'bg-emerald-50 text-emerald-500'
                                                 }`}>
                                                 {group.totalStock}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                        <td className="px-4 py-4 text-[14px] font-bold text-slate-700">
                                             Rs. {group.price || 0}
                                         </td>
-                                        <td className="px-4 py-3">
+                                        <td className="px-4 py-4">
                                             {expiryDate ? (
-                                                <span className={`text-sm ${isExpired ? 'text-red-600 font-medium' : isExpiringSoon ? 'text-orange-600 font-medium' : 'text-green-600'
+                                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-[12px] font-bold ${isExpired
+                                                    ? 'bg-rose-50 text-rose-500'
+                                                    : isExpiringSoon
+                                                        ? 'bg-amber-50 text-amber-500'
+                                                        : 'bg-emerald-50/20 text-emerald-500'
                                                     }`}>
-                                                    {expiryDate.toLocaleDateString()}
+                                                    {expiryDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                                                 </span>
                                             ) : (
-                                                <span className="text-sm text-gray-400">N/A</span>
+                                                <span className="text-[12px] text-slate-300">N/A</span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-3">
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
-                                                Rx
-                                            </span>
+                                        <td className="px-4 py-4">
+                                            {group.prescriptionRequired && (
+                                                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-50 text-slate-400 border border-slate-100">
+                                                    Rx
+                                                </span>
+                                            )}
                                         </td>
-                                        <td className="px-4 py-3">
+                                        <td className="px-4 py-4 text-center">
                                             <div className="relative">
                                                 <button
                                                     onClick={() => setOpenActionMenu(openActionMenu === index ? null : index)}
-                                                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                                                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors group"
                                                 >
-                                                    <MoreVertical size={16} className="text-gray-600" />
+                                                    <MoreVertical size={16} className="text-slate-400 group-hover:text-slate-600" />
                                                 </button>
 
                                                 {openActionMenu === index && (
@@ -851,7 +877,7 @@ const Medicines = () => {
                     <select
                         value={pagination.limit}
                         onChange={(e) => setPagination({ ...pagination, limit: parseInt(e.target.value) })}
-                        className="px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                        className="px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#0F9D78]/10 focus:border-[#0F9D78] transition-all"
                     >
                         <option value="10">10</option>
                         <option value="25">25</option>
@@ -864,21 +890,25 @@ const Medicines = () => {
                     <button
                         onClick={() => fetchMedicines(pagination.page - 1)}
                         disabled={pagination.page <= 1}
-                        className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="p-2 border border-gray-200 rounded-lg hover:bg-[#0F9D78]/5 hover:border-[#0F9D78]/30 hover:text-[#0F9D78] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     >
                         <ChevronLeft size={18} />
                     </button>
 
                     <div className="flex items-center gap-1">
-                        <span className="px-3 py-1.5 text-sm font-medium">
-                            Page {pagination.page} of {pagination.pages}
+                        <span className="px-4 py-1.5 text-sm font-semibold bg-[#0F9D78] text-white rounded-lg shadow-sm">
+                            {pagination.page}
+                        </span>
+                        <span className="text-sm text-gray-400 px-1">of</span>
+                        <span className="px-3 py-1.5 text-sm font-medium text-gray-600">
+                            {pagination.pages}
                         </span>
                     </div>
 
                     <button
                         onClick={() => fetchMedicines(pagination.page + 1)}
                         disabled={pagination.page >= pagination.pages}
-                        className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="p-2 border border-gray-200 rounded-lg hover:bg-[#0F9D78]/5 hover:border-[#0F9D78]/30 hover:text-[#0F9D78] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     >
                         <ChevronRight size={18} />
                     </button>
