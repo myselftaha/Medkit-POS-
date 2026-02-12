@@ -31,6 +31,7 @@ const Medicines = () => {
     const [viewMode, setViewMode] = useState('table');
     const [openActionMenu, setOpenActionMenu] = useState(null);
     const [isPrintDropdownOpen, setIsPrintDropdownOpen] = useState(false);
+    const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
 
     // Stats State
     const [stats, setStats] = useState({
@@ -449,6 +450,29 @@ const Medicines = () => {
         setIsPrintDropdownOpen(prev => !prev);
     };
 
+    const handleDeleteAll = async () => {
+        try {
+            const response = await fetch(`${API_URL}/api/medicines/delete-all`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                await fetchMedicines();
+                await fetchStats();
+                setIsDeleteAllModalOpen(false);
+                showToast(`Successfully deleted ${data.deletedCount} medicines`, 'success');
+            } else {
+                const errorData = await response.json();
+                showToast(errorData.message || 'Failed to delete medicines', 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting all medicines:', error);
+            showToast('Error deleting medicines', 'error');
+        }
+    };
+
     const handlePrintAll = () => {
         const printWindow = window.open('', '', 'height=600,width=800');
         const tableRows = groupedMedicines.map((medicine, index) => {
@@ -671,6 +695,14 @@ const Medicines = () => {
                                 </div>
                             )}
                         </div>
+
+                        <button
+                            onClick={() => setIsDeleteAllModalOpen(true)}
+                            className="flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 border border-red-200 rounded-md transition-colors bg-white"
+                        >
+                            <Trash2 size={14} />
+                            Delete All
+                        </button>
                     </div>
                 </div>
             </div>
@@ -967,6 +999,17 @@ const Medicines = () => {
                 onClose={() => setIsImportModalOpen(false)}
                 onImport={handleExcelImport}
             />
+
+            {/* Delete All Confirmation Modal */}
+            {isDeleteAllModalOpen && (
+                <DeleteConfirmationModal
+                    isOpen={isDeleteAllModalOpen}
+                    onClose={() => setIsDeleteAllModalOpen(false)}
+                    onConfirm={handleDeleteAll}
+                    title="Delete All Medicines"
+                    message="Are you sure you want to delete ALL medicines? This action cannot be undone and will permanently delete all medicine records from your inventory."
+                />
+            )}
         </div>
     );
 };

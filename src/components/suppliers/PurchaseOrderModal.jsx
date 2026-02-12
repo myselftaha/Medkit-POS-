@@ -189,7 +189,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, supplier, onSuccess }) => {
                     const deliveryDate = expectedDelivery ? new Date(expectedDelivery).toLocaleDateString('en-PK') : 'Not specified';
 
                     let message = `*📦 PURCHASE ORDER REQUEST*\n\n`;
-                    message += `*From:* AI Pharmacy\n`;
+                    message += `*From:* MedKit POS\n`;
                     message += `*To:* ${supplier.name}\n`;
                     message += `*Date:* ${orderDate}\n`;
                     message += `*Expected Delivery:* ${deliveryDate}\n\n`;
@@ -223,7 +223,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, supplier, onSuccess }) => {
             const deliveryDate = expectedDelivery ? new Date(expectedDelivery).toLocaleDateString('en-PK') : 'Not specified';
 
             let message = `*📦 PURCHASE ORDER REQUEST*\n\n`;
-            message += `*From:* AI Pharmacy\n`;
+            message += `*From:* MedKit POS\n`;
             message += `*To:* ${supplier.name}\n`;
             message += `*Date:* ${orderDate}\n`;
             message += `*Expected Delivery:* ${deliveryDate}\n\n`;

@@ -1766,18 +1766,18 @@ app.get('/api/supplies/stats', authenticateToken, async (req, res) => {
     try {
         // Get all medicines
         const medicines = await Medicine.find({ status: 'Active' });
-        
+
         // Get settings for low stock threshold
         const settings = await Settings.findOne();
         const lowStockThreshold = settings?.lowStockThreshold || 10;
         const expiryAlertDays = settings?.expiryAlertDays || 30;
-        
+
         // Calculate statistics
         const totalMedicines = medicines.length;
-        
+
         // Low stock count (stock <= threshold)
         const lowStockCount = medicines.filter(m => (m.stock || 0) <= lowStockThreshold).length;
-        
+
         // Expiring soon count (expiry within alert days)
         const now = new Date();
         const expiryAlertDate = new Date();
@@ -1787,10 +1787,10 @@ app.get('/api/supplies/stats', authenticateToken, async (req, res) => {
             const expiryDate = new Date(m.expiryDate);
             return expiryDate >= now && expiryDate <= expiryAlertDate;
         }).length;
-        
+
         // Out of stock count
         const outOfStockCount = medicines.filter(m => (m.stock || 0) === 0).length;
-        
+
         // Calculate total inventory value
         let totalInventoryValue = 0;
         medicines.forEach(m => {
@@ -1798,14 +1798,14 @@ app.get('/api/supplies/stats', authenticateToken, async (req, res) => {
             const price = m.price || m.sellingPrice || 0;
             totalInventoryValue += stock * price;
         });
-        
+
         // Get unique manufacturers/suppliers
         const supplies = await Supply.find({});
         const manufacturers = [...new Set(supplies.map(s => s.supplierName).filter(Boolean))];
-        
+
         // Get unique categories
         const categories = [...new Set(medicines.map(m => m.category).filter(Boolean))];
-        
+
         res.json({
             totalMedicines,
             lowStockCount,
@@ -2656,6 +2656,20 @@ app.put('/api/medicines/:id', authenticateToken, async (req, res) => {
         res.json(updatedMedicine);
     } catch (err) {
         res.status(400).json({ message: err.message });
+    }
+});
+
+// Delete all medicines (must come before :id route)
+app.delete('/api/medicines/delete-all', authenticateToken, async (req, res) => {
+    try {
+        // Delete all supplies (inventory batches) - this is what the Medicines page displays
+        const result = await Supply.deleteMany({});
+        res.json({
+            message: 'All medicines deleted successfully',
+            deletedCount: result.deletedCount
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 });
 
