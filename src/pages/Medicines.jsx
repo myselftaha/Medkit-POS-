@@ -106,13 +106,15 @@ const Medicines = () => {
         }
     };
 
-    const fetchMedicines = useCallback(async (page = 1) => {
+    const fetchMedicines = useCallback(async (page = 1, limit = null) => {
         try {
             setLoading(true);
             const token = localStorage.getItem('token');
+            const currentLimit = limit || pagination.limit;
+
             const params = new URLSearchParams({
                 page,
-                limit: pagination.limit,
+                limit: currentLimit,
                 searchQuery: debouncedSearch
             });
 
@@ -383,7 +385,7 @@ const Medicines = () => {
         setIsDetailsModalOpen(true);
     };
 
-    const handleExcelImport = async (excelData) => {
+    const handleExcelImport = async (excelData, options = {}) => {
         try {
             const response = await fetch(`${API_URL}/api/medicines/bulk-import`, {
                 method: 'POST',
@@ -391,7 +393,10 @@ const Medicines = () => {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${localStorage.getItem('token')}`
                 },
-                body: JSON.stringify({ medicines: excelData })
+                body: JSON.stringify({
+                    medicines: excelData,
+                    ...options
+                })
             });
 
             const result = await response.json();
@@ -673,6 +678,14 @@ const Medicines = () => {
                             <ChevronDown size={14} className="text-gray-400 ml-1" />
                         </button>
 
+                        <button
+                            onClick={() => setIsImportModalOpen(true)}
+                            className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-md transition-colors bg-white"
+                        >
+                            <Upload size={14} />
+                            Import Excel
+                        </button>
+
                         <div className="relative">
                             <button
                                 onClick={handlePrint}
@@ -919,7 +932,12 @@ const Medicines = () => {
                     <span className="text-sm text-gray-600">Showing</span>
                     <select
                         value={pagination.limit}
-                        onChange={(e) => setPagination({ ...pagination, limit: parseInt(e.target.value) })}
+                        onChange={(e) => {
+                            const newLimit = parseInt(e.target.value);
+                            // Optimistically update state and fetch immediately
+                            setPagination(prev => ({ ...prev, limit: newLimit, page: 1 }));
+                            fetchMedicines(1, newLimit);
+                        }}
                         className="px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#00c950]/10 focus:border-[#00c950] transition-all"
                     >
                         <option value="10">10</option>

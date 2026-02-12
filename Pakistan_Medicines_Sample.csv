@@ -1,0 +1,51 @@
+name,genericName,category,sellingPrice,costPrice,stock,unit,packSize,supplier,batchNumber,expiryDate,mrp
+Panadol 500mg Tablets,Paracetamol,Pain Relief,3,2.4,1000,Tablets,200,GSK Pakistan,PAN-2024-01,2026-12-31,3.5
+Brufen 400mg Tablets,Ibuprofen,Pain Relief,5,4.2,500,Tablets,50,Abbott Pakistan,BRU-2024-02,2025-11-30,5.5
+Augmentin 625mg Tablets,Co-amoxiclav,Antibiotics,45,39,200,Tablets,10,GSK Pakistan,AUG-2024-03,2026-05-20,50
+Flagyl 400mg Tablets,Metronidazole,Antibiotics,4,3.2,800,Tablets,200,Sanofi Pakistan,FLG-2024-04,2027-02-15,4.5
+Ascard 75mg Tablets,Acetylsalicylic Acid,Cardiovascular,2,1.5,1500,Tablets,30,Atco Laboratories,ASC-2024-05,2026-08-10,2.5
+Surbex Z Tablets,Multivitamin + Minerals,Vitamins,18,15,300,Tablets,30,Abbott Pakistan,SUR-2024-06,2025-12-01,20
+CaC-1000 Plus Effervescent,Calcium + Vitamin D3,Supplements,35,28,400,Tablets,10,GSK Pakistan,CAC-2024-07,2026-06-30,40
+Rigix 10mg Tablets,Cetirizine,Anti-Allergy,8,6.5,600,Tablets,20,AGP Limited,RIG-2024-08,2026-09-15,10
+Softin 10mg Tablets,Loratadine,Anti-Allergy,7,5.8,500,Tablets,10,Highnoon Laboratories,SOF-2024-09,2026-03-20,8
+Disprin 300mg Soluble,Aspirin,Pain Relief,2.5,2,2000,Tablets,100,Reckitt Benckiser,DIS-2024-10,2027-01-01,3
+Gravinate 50mg Tablets,Dimenhydrinate,Anti-Emetic,5,4,400,Tablets,100,Searle Pakistan,GRA-2024-11,2026-11-12,6
+Nuberol Forte Tablets,Orphenadrine + Paracetamol,Muscle Relaxant,6,4.8,800,Tablets,100,Searle Pakistan,NUB-2024-12,2026-07-25,7
+Imodium 2mg Capsules,Loperamide,Gastrointestinal,6,5,300,Capsules,4,Janssen Pakistan,IMO-2024-13,2025-10-30,7
+Ponstan Forte 500mg,Mefenamic Acid,Pain Relief,7,5.5,600,Tablets,20,Pfizer Pakistan,PON-2024-14,2026-12-15,8
+Arinac Tablets,Ibuprofen + Pseudoephedrine,Cold & Flu,8,6.2,500,Tablets,10,Abbott Pakistan,ARI-2024-15,2026-02-28,9
+Kestine 10mg Tablets,Ebastine,Anti-Allergy,12,10,200,Tablets,10,Bosch Pharmaceuticals,KES-2024-16,2026-05-15,14
+Zanidip 10mg Tablets,Lercanidipine,Cardiovascular,25,20,150,Tablets,10,Highnoon Laboratories,ZAN-2024-17,2025-08-20,28
+Nexum 40mg Capsules,Esomeprazole,Gastrointestinal,30,24,200,Capsules,14,Getz Pharma,NEX-2024-18,2026-04-10,35
+Risek 40mg Capsules,Omeprazole,Gastrointestinal,28,22,250,Capsules,14,Getz Pharma,RIS-2024-19,2026-01-30,32
+Synflex 550mg Tablets,Naproxen Sodium,Pain Relief,15,12,300,Tablets,10,Martin Dow,SYN-2024-20,2026-10-05,18
+Voltral 50mg Tablets,Diclofenac Sodium,Pain Relief,12,9.5,400,Tablets,20,Novartis Pakistan,VOL-2024-21,2025-12-12,14
+Amoxil 500mg Capsules,Amoxicillin,Antibiotics,18,14,300,Capsules,10,GSK Pakistan,AMX-2024-22,2026-03-25,20
+Velosef 500mg Capsules,Cephradine,Antibiotics,22,18,200,Capsules,12,GSK Pakistan,VEL-2024-23,2025-11-15,25
+Cefspan 400mg Capsules,Cefixime,Antibiotics,85,70,100,Capsules,5,Barrett Hodgson,CEF-2024-24,2026-06-10,95
+Ciproxin 500mg Tablets,Ciprofloxacin,Antibiotics,40,32,150,Tablets,10,Bayer Pakistan,CIP-2024-25,2026-09-01,45
+Novidat 500mg Tablets,Ciprofloxacin,Antibiotics,35,28,200,Tablets,10,Sami Pharmaceuticals,NOV-2024-26,2026-07-20,40
+Leflox 500mg Tablets,Levofloxacin,Antibiotics,45,36,150,Tablets,10,Getz Pharma,LEF-2024-27,2026-12-05,50
+Myteka 10mg Tablets,Montelukast Sodium,Respiratory,30,24,200,Tablets,14,Hilton Pharma,MYT-2024-28,2025-11-20,35
+Ventolin 2mg Tablets,Salbutamol,Respiratory,2,1.5,500,Tablets,100,GSK Pakistan,VEN-2024-29,2027-01-10,2.5
+Panadol Extra Tablets,Paracetamol + Caffeine,Pain Relief,4,3.2,800,Tablets,200,GSK Pakistan,PEX-2024-30,2026-10-15,5
+Glucophage 500mg Tablets,Metformin,Diabetes,5,3.8,600,Tablets,50,Merck Pakistan,GLU-2024-31,2026-05-30,6
+Getryl 2mg Tablets,Glimepiride,Diabetes,10,8,400,Tablets,20,Getz Pharma,GET-2024-32,2026-02-15,12
+Diamicron MR 60mg,Gliclazide,Diabetes,15,12,300,Tablets,30,Servier Pakistan,DIA-2024-33,2025-12-20,18
+Tenormin 50mg Tablets,Atenolol,Cardiovascular,6,4.5,500,Tablets,14,ICI Pakistan,TEN-2024-34,2026-08-05,7
+Concor 5mg Tablets,Bisoprolol,Cardiovascular,12,9.5,300,Tablets,14,Martin Dow,CON-2024-35,2026-01-25,14
+Lipiget 20mg Tablets,Atorvastatin,Cardiovascular,20,16,250,Tablets,10,Getz Pharma,LIP-2024-36,2026-04-15,24
+Lowplat 75mg Tablets,Clopidogrel,Cardiovascular,15,12,300,Tablets,10,Pharmevo,LOW-2024-37,2026-09-30,18
+Hydryllin Syrup 120ml,Aminophylline + Diphenhydramine,Cough Syrup,85,65,100,Bottle,1,Searle Pakistan,HYD-2024-38,2025-11-10,95
+Acefyl Cough Syrup 120ml,Acephylline Piperazine,Cough Syrup,90,72,100,Bottle,1,Sami Pharmaceuticals,ACE-2024-39,2026-12-05,100
+Pulmonol Syrup 120ml,Herbal,Cough Syrup,120,95,80,Bottle,1,CCL Pharmaceuticals,PUL-2024-40,2026-03-15,135
+Polyfax Skin Ointment 20g,Polymyxin B + Bacitracin,Dermatology,150,110,60,Tube,1,GSK Pakistan,POL-2024-41,2026-07-01,170
+Betnovate-N Cream 15g,Betamethasone + Neomycin,Dermatology,110,85,75,Tube,1,GSK Pakistan,BET-2024-42,2025-10-20,125
+Pyodine Solution 60ml,Povidone Iodine,Antiseptic,80,60,100,Bottle,1,Brookes Pharma,PYO-2024-43,2027-02-10,90
+Flagyl Suspension 60ml,Metronidazole,Antibiotics,60,45,120,Bottle,1,Sanofi Pakistan,FLS-2024-44,2025-09-05,70
+Calpol Syrup 60ml,Paracetamol,Pain Relief/Fever,55,42,150,Bottle,1,GSK Pakistan,CAL-2024-45,2026-11-25,65
+Brufen Syrup 90ml,Ibuprofen,Pain Relief/Fever,70,55,120,Bottle,1,Abbott Pakistan,BRS-2024-46,2026-01-15,80
+Entamizole DS Tablets,Diloxanide + Metronidazole,Gastrointestinal,8,6,300,Tablets,15,Abbott Pakistan,ENT-2024-47,2026-06-20,9.5
+Fefol Vit Spansules,Iron + Folic Acid,Supplements,10,8,400,Capsules,30,GSK Pakistan,FEF-2024-48,2025-12-30,12
+Sangobion Capsules,Iron + Vitamins,Supplements,12,9.5,300,Capsules,30,Merck Pakistan,SAN-2024-49,2026-08-15,15
+Neurobion Tablets,Vitamin B Complex,Vitamins,15,11,350,Tablets,30,Martin Dow,NEU-2024-50,2026-04-05,18

@@ -6,17 +6,54 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
     const [file, setFile] = useState(null);
     const [importing, setImporting] = useState(false);
     const [results, setResults] = useState(null);
+    const [duplicateStrategy, setDuplicateStrategy] = useState('merge');
+    const [createSupplies, setCreateSupplies] = useState(true);
+    const [autoLinkSuppliers, setAutoLinkSuppliers] = useState(true);
 
     const handleFileChange = (e) => {
         const selectedFile = e.target.files[0];
         if (selectedFile) {
-            if (!selectedFile.name.endsWith('.xlsx') && !selectedFile.name.endsWith('.xls')) {
-                alert('Please select an Excel file (.xlsx or .xls)');
+            if (!selectedFile.name.endsWith('.xlsx') && !selectedFile.name.endsWith('.xls') && !selectedFile.name.endsWith('.csv')) {
+                alert('Please select an Excel or CSV file (.xlsx, .xls, .csv)');
                 return;
             }
             setFile(selectedFile);
             setResults(null);
         }
+    };
+
+    // Helper to parse dates (Excel serial or string)
+    const parseDate = (dateValue) => {
+        if (!dateValue) return null;
+
+        // 1. Handle Excel Serial Date
+        if (typeof dateValue === 'number') {
+            const date = new Date(Math.round((dateValue - 25569) * 86400 * 1000));
+            return !isNaN(date.getTime()) ? date : null;
+        }
+
+        // 2. Handle Strings
+        if (typeof dateValue === 'string') {
+            const trimmed = dateValue.trim();
+            // Try ISO (YYYY-MM-DD)
+            let date = new Date(trimmed);
+            if (!isNaN(date.getTime())) return date;
+
+            // Try DD/MM/YYYY or DD-MM-YYYY (Common in Pakistan)
+            const parts = trimmed.split(/[-/]/);
+            if (parts.length === 3) {
+                // Assumption: if first part > 12, it's likely Day. Or if year is last.
+                // Format: DD-MM-YYYY
+                const d = parseInt(parts[0]);
+                const m = parseInt(parts[1]) - 1; // Month is 0-indexed
+                const y = parseInt(parts[2]);
+                if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+                    date = new Date(y, m, d);
+                    if (!isNaN(date.getTime())) return date;
+                }
+            }
+        }
+        return null;
     };
 
     const handleImport = async () => {
@@ -44,8 +81,30 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
                         return;
                     }
 
-                    // Call the parent import handler
-                    const result = await onImport(jsonData);
+                    // Pre-process data to fix dates
+                    const processedData = jsonData.map(item => {
+                        const newItem = { ...item };
+
+                        // Normalize keys (handle case sensitivity)
+                        Object.keys(newItem).forEach(key => {
+                            const lowerKey = key.toLowerCase();
+                            if (lowerKey.includes('expiry') || lowerKey.includes('date')) {
+                                const dateVal = newItem[key];
+                                const parsed = parseDate(dateVal);
+                                if (parsed) {
+                                    newItem[key] = parsed.toISOString();
+                                }
+                            }
+                        });
+                        return newItem;
+                    });
+
+                    // Call the parent import handler with options
+                    const result = await onImport(processedData, {
+                        duplicateStrategy,
+                        createSupplies,
+                        autoLinkSuppliers
+                    });
                     setResults(result);
 
                 } catch (error) {
@@ -65,47 +124,83 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
     };
 
     const downloadTemplate = () => {
-        // Sample data for template
+        // Enhanced sample data for template with realistic pharmacy examples
         const templateData = [
             {
                 name: 'Paracetamol 500mg',
-                description: 'Pain reliever and fever reducer',
-                price: 10,
-                stock: 100,
-                unit: 'pcs',
-                netContent: '10 tablets',
-                category: 'Pain Relief',
-                costPrice: 7,
-                minStock: 20,
-                supplier: 'ABC Pharma',
-                formulaCode: 'PCM500',
                 genericName: 'Paracetamol',
-                shelfLocation: 'A-1',
-                mrp: 15,
-                sellingPrice: 12,
+                description: 'Pain reliever and fever reducer',
+                category: 'Pain Relief',
+                sellingPrice: 10,
+                costPrice: 7,
+                mrp: 12,
+                stock: 100,
+                unit: 'Tablets',
                 packSize: 10,
-                status: 'Active',
-                expiryDate: '2025-12-31'
+                minStock: 20,
+                supplier: 'ABC Pharmaceuticals',
+                batchNumber: 'PCM2024001',
+                expiryDate: '2025-12-31',
+                formulaCode: 'PCM500',
+                shelfLocation: 'A-1-1',
+                status: 'Active'
             },
             {
-                name: 'Amoxicillin 250mg',
-                description: 'Antibiotic',
-                price: 50,
-                stock: 50,
-                unit: 'pcs',
-                netContent: '10 capsules',
+                name: 'Amoxicillin 250mg Capsules',
+                genericName: 'Amoxicillin',
+                description: 'Antibiotic for bacterial infections',
                 category: 'Antibiotics',
+                sellingPrice: 50,
                 costPrice: 35,
+                mrp: 60,
+                stock: 50,
+                unit: 'Capsules',
+                packSize: 10,
                 minStock: 15,
                 supplier: 'XYZ Pharma',
+                batchNumber: 'AMX2024002',
+                expiryDate: '2026-06-30',
                 formulaCode: 'AMX250',
-                genericName: 'Amoxicillin',
-                shelfLocation: 'B-2',
-                mrp: 60,
-                sellingPrice: 55,
+                shelfLocation: 'B-2-1',
+                status: 'Active'
+            },
+            {
+                name: 'Omeprazole 20mg',
+                genericName: 'Omeprazole',
+                description: 'Proton pump inhibitor for acid reflux',
+                category: 'Gastrointestinal',
+                sellingPrice: 85,
+                costPrice: 60,
+                mrp: 95,
+                stock: 75,
+                unit: 'Capsules',
                 packSize: 10,
-                status: 'Active',
-                expiryDate: '2026-06-30'
+                minStock: 20,
+                supplier: 'MediPharma Ltd',
+                batchNumber: 'OMP2024003',
+                expiryDate: '2025-09-15',
+                formulaCode: 'OMP20',
+                shelfLocation: 'C-3-2',
+                status: 'Active'
+            },
+            {
+                name: 'Metformin 500mg',
+                genericName: 'Metformin HCl',
+                description: 'Anti-diabetic medication',
+                category: 'Diabetes',
+                sellingPrice: 35,
+                costPrice: 25,
+                mrp: 40,
+                stock: 120,
+                unit: 'Tablets',
+                packSize: 10,
+                minStock: 30,
+                supplier: 'Global Pharma',
+                batchNumber: 'MET2024004',
+                expiryDate: '2026-03-20',
+                formulaCode: 'MET500',
+                shelfLocation: 'D-1-3',
+                status: 'Active'
             }
         ];
 
@@ -113,29 +208,75 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Medicines');
 
-        // Column widths
-        ws['!cols'] = [
-            { wch: 25 }, // name
-            { wch: 35 }, // description
-            { wch: 10 }, // price
-            { wch: 10 }, // stock
-            { wch: 10 }, // unit
-            { wch: 15 }, // netContent
-            { wch: 15 }, // category
-            { wch: 10 }, // costPrice
-            { wch: 10 }, // minStock
-            { wch: 15 }, // supplier
-            { wch: 15 }, // formulaCode
-            { wch: 15 }, // genericName
-            { wch: 15 }, // shelfLocation
-            { wch: 10 }, // mrp
-            { wch: 12 }, // sellingPrice
-            { wch: 10 }, // packSize
-            { wch: 10 }, // status
-            { wch: 12 }  // expiryDate
+        // Add instructions sheet
+        const instructions = [
+            ['Bulk Medicine Import Template - Instructions'],
+            [],
+            ['Column Name', 'Required', 'Data Type', 'Description', 'Example'],
+            ['name', 'Yes', 'Text', 'Medicine name (must be unique)', 'Paracetamol 500mg'],
+            ['genericName', 'No', 'Text', 'Generic/scientific name', 'Paracetamol'],
+            ['description', 'No', 'Text', 'Brief description', 'Pain reliever and fever reducer'],
+            ['category', 'No', 'Text', 'Medicine category', 'Pain Relief'],
+            ['sellingPrice', 'Yes', 'Number', 'Retail price per unit (must be > 0)', '10.50'],
+            ['costPrice', 'No', 'Number', 'Purchase cost per unit', '7.25'],
+            ['mrp', 'No', 'Number', 'Maximum retail price', '12.00'],
+            ['stock', 'No', 'Number', 'Quantity in stock (in packs)', '100'],
+            ['unit', 'No', 'Text', 'Unit of measurement', 'Tablets/Capsules/Bottles'],
+            ['packSize', 'No', 'Number', 'Items per pack', '10'],
+            ['minStock', 'No', 'Number', 'Minimum stock alert level', '20'],
+            ['supplier', 'No', 'Text', 'Supplier name (auto-linked if exists)', 'ABC Pharmaceuticals'],
+            ['batchNumber', 'No', 'Text', 'Batch/Lot number', 'PCM2024001'],
+            ['expiryDate', 'No', 'Date', 'Expiry date (YYYY-MM-DD)', '2025-12-31'],
+            ['formulaCode', 'No', 'Text', 'Formula/SKU code', 'PCM500'],
+            ['shelfLocation', 'No', 'Text', 'Storage location', 'A-1-1'],
+            ['status', 'No', 'Text', 'Medicine status', 'Active/Inactive'],
+            [],
+            ['Important Notes:'],
+            ['1. Required fields MUST be filled (name, sellingPrice)'],
+            ['2. Duplicate medicines: Choose handling in import options (Skip/Update/Merge)'],
+            ['3. Negative prices will be rejected'],
+            ['4. Expired items will show warnings but still import'],
+            ['5. If supplier name matches existing supplier, it will be auto-linked'],
+            ['6. Stock is calculated as: stock × packSize'],
+            ['7. Date format must be YYYY-MM-DD (e.g., 2025-12-31)'],
+            ['8. For best results, fill all columns with accurate data'],
         ];
 
-        XLSX.writeFile(wb, 'medicines_template.xlsx');
+        const wsInstructions = XLSX.utils.aoa_to_sheet(instructions);
+
+        // Set column widths for instructions
+        wsInstructions['!cols'] = [
+            { wch: 20 },  // Column name
+            { wch: 12 },  // Required
+            { wch: 15 },  // Data Type
+            { wch: 45 },  // Description
+            { wch: 30 }   // Example
+        ];
+
+        XLSX.utils.book_append_sheet(wb, wsInstructions, 'Instructions');
+
+        // Set column widths for medicines sheet
+        ws['!cols'] = [
+            { wch: 30 }, // name
+            { wch: 20 }, // genericName
+            { wch: 40 }, // description
+            { wch: 15 }, // category
+            { wch: 12 }, // sellingPrice
+            { wch: 12 }, // costPrice
+            { wch: 10 }, // mrp
+            { wch: 10 }, // stock
+            { wch: 12 }, // unit
+            { wch: 10 }, // packSize
+            { wch: 10 }, // minStock
+            { wch: 20 }, // supplier
+            { wch: 18 }, // batchNumber
+            { wch: 12 }, // expiryDate
+            { wch: 15 }, // formulaCode
+            { wch: 15 }, // shelfLocation
+            { wch: 10 }  // status
+        ];
+
+        XLSX.writeFile(wb, 'medicines_import_template.xlsx');
     };
 
     if (!isOpen) return null;
@@ -186,6 +327,60 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
                         </div>
                     </div>
 
+                    {/* Import Options */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+                        <h3 className="font-semibold text-gray-800 text-sm mb-2">Import Options</h3>
+
+                        {/* Duplicate Handling */}
+                        <div>
+                            <label className="block text-xs font-medium text-gray-700 mb-2">
+                                If medicine already exists:
+                            </label>
+                            <select
+                                value={duplicateStrategy}
+                                onChange={(e) => setDuplicateStrategy(e.target.value)}
+                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
+                            >
+                                <option value="skip">Skip (Don't import duplicates)</option>
+                                <option value="update">Update (Replace existing data)</option>
+                                <option value="merge">Merge (Add stock to existing)</option>
+                            </select>
+                            <p className="text-xs text-gray-500 mt-1">
+                                {duplicateStrategy === 'skip' && 'Duplicate medicines will be skipped'}
+                                {duplicateStrategy === 'update' && 'Existing data will be replaced with new data'}
+                                {duplicateStrategy === 'merge' && 'Stock will be added to existing medicines'}
+                            </p>
+                        </div>
+
+                        {/* Auto-create batches */}
+                        <label className="flex items-start gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={createSupplies}
+                                onChange={(e) => setCreateSupplies(e.target.checked)}
+                                className="mt-0.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                            />
+                            <div>
+                                <span className="text-sm text-gray-700 font-medium">Create inventory batches</span>
+                                <p className="text-xs text-gray-500">Automatically create Supply records for batch tracking</p>
+                            </div>
+                        </label>
+
+                        {/* Auto-link suppliers */}
+                        <label className="flex items-start gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={autoLinkSuppliers}
+                                onChange={(e) => setAutoLinkSuppliers(e.target.checked)}
+                                className="mt-0.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                            />
+                            <div>
+                                <span className="text-sm text-gray-700 font-medium">Auto-link suppliers</span>
+                                <p className="text-xs text-gray-500">Match supplier names to your existing suppliers</p>
+                            </div>
+                        </label>
+                    </div>
+
                     {/* File Upload */}
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -194,7 +389,7 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
                         <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-green-500 transition-colors">
                             <input
                                 type="file"
-                                accept=".xlsx,.xls"
+                                accept=".xlsx,.xls,.csv"
                                 onChange={handleFileChange}
                                 className="hidden"
                                 id="excel-upload"
@@ -209,10 +404,10 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
                                 ) : (
                                     <>
                                         <div className="font-medium text-gray-700">
-                                            Click to upload Excel file
+                                            Click to upload Excel or CSV file
                                         </div>
                                         <div className="text-sm text-gray-500">
-                                            Supports .xlsx and .xls files
+                                            Supports .xlsx, .xls, and .csv files
                                         </div>
                                     </>
                                 )}
@@ -228,7 +423,7 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
                                 Import Results
                             </h3>
 
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-4 gap-3">
                                 <div className="text-center p-3 bg-gray-50 rounded-lg">
                                     <div className="text-2xl font-bold text-gray-800">{results.results.total}</div>
                                     <div className="text-xs text-gray-600">Total</div>
@@ -237,6 +432,12 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
                                     <div className="text-2xl font-bold text-green-600">{results.results.successful}</div>
                                     <div className="text-xs text-green-700">Successful</div>
                                 </div>
+                                {results.results.skipped > 0 && (
+                                    <div className="text-center p-3 bg-yellow-50 rounded-lg">
+                                        <div className="text-2xl font-bold text-yellow-600">{results.results.skipped}</div>
+                                        <div className="text-xs text-yellow-700">Skipped</div>
+                                    </div>
+                                )}
                                 <div className="text-center p-3 bg-red-50 rounded-lg">
                                     <div className="text-2xl font-bold text-red-600">{results.results.failed}</div>
                                     <div className="text-xs text-red-700">Failed</div>
@@ -253,6 +454,22 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
                                         {results.results.errors.map((error, idx) => (
                                             <div key={idx} className="text-red-700">
                                                 Row {error.row}: {error.name} - {error.error}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {results.results.warnings?.length > 0 && (
+                                <div className="mt-3">
+                                    <h4 className="font-medium text-yellow-700 text-sm mb-2 flex items-center gap-2">
+                                        <AlertCircle size={16} />
+                                        Warnings ({results.results.warnings.length})
+                                    </h4>
+                                    <div className="max-h-40 overflow-auto bg-yellow-50 border border-yellow-200 rounded p-3 text-xs space-y-1">
+                                        {results.results.warnings.map((warning, idx) => (
+                                            <div key={idx} className="text-yellow-800">
+                                                Row {warning.row}: {warning.name} - {warning.message}
                                             </div>
                                         ))}
                                     </div>

@@ -2475,7 +2475,7 @@ app.post('/api/medicines', authenticateToken, async (req, res) => {
 // Bulk import medicines from Excel
 app.post('/api/medicines/bulk-import', authenticateToken, async (req, res) => {
     try {
-        const { medicines } = req.body;
+        const { medicines, duplicateStrategy, createSupplies, autoLinkSuppliers } = req.body;
 
         if (!Array.isArray(medicines) || medicines.length === 0) {
             return res.status(400).json({ message: 'Invalid data: medicines array is required' });
@@ -2485,7 +2485,9 @@ app.post('/api/medicines/bulk-import', authenticateToken, async (req, res) => {
             total: medicines.length,
             successful: 0,
             failed: 0,
+            skipped: 0,
             errors: [],
+            warnings: [],
             imported: []
         };
 
@@ -2497,22 +2499,17 @@ app.post('/api/medicines/bulk-import', authenticateToken, async (req, res) => {
             const medicineData = medicines[i];
 
             try {
-                // Basic validation
+                // Enhanced validation
                 const name = (medicineData.name || medicineData.Name || medicineData['Medicine Name'] || '').trim();
                 if (!name) {
                     results.failed++;
                     results.errors.push({
-                        row: i + 2, // Excel row (accounting for header)
+                        row: i + 2,
                         name: 'Unknown',
                         error: 'Name is required'
                     });
                     continue;
                 }
-
-                // Check for existing medicine
-                let medicine = await Medicine.findOne({
-                    name: { $regex: new RegExp(`^${name}$`, 'i') }
-                });
 
                 const stockToAdd = parseInt(medicineData.stock || medicineData.Stock || 0) || 0;
                 const freeQuantityToAdd = parseInt(medicineData.freeQuantity || medicineData.FreeQuantity || medicineData.bonus || medicineData.Bonus || 0) || 0;
@@ -2522,8 +2519,82 @@ app.post('/api/medicines/bulk-import', authenticateToken, async (req, res) => {
                 const packSize = parseInt(medicineData.packSize || medicineData.PackSize || 1) || 1;
                 const expiryDate = medicineData.expiryDate || medicineData.ExpiryDate ? new Date(medicineData.expiryDate || medicineData.ExpiryDate) : null;
 
-                if (medicine) {
-                    // Update existing medicine
+                // Validation rules
+                if (sellingPrice < 0) {
+                    results.failed++;
+                    results.errors.push({
+                        row: i + 2,
+                        name,
+                        error: 'Selling price cannot be negative'
+                    });
+                    continue;
+                }
+
+                if (costPrice < 0) {
+                    results.failed++;
+                    results.errors.push({
+                        row: i + 2,
+                        name,
+                        error: 'Cost price cannot be negative'
+                    });
+                    continue;
+                }
+
+                // Warnings for business logic
+                if (costPrice > sellingPrice && sellingPrice > 0) {
+                    results.warnings.push({
+                        row: i + 2,
+                        name,
+                        message: 'Cost price is higher than selling price'
+                    });
+                }
+
+                if (expiryDate && expiryDate < new Date()) {
+                    results.warnings.push({
+                        row: i + 2,
+                        name,
+                        message: 'Medicine is already expired'
+                    });
+                }
+
+                // Check for existing medicine
+                let medicine = await Medicine.findOne({
+                    name: { $regex: new RegExp(`^${name}$`, 'i') }
+                });
+
+                // Handle duplicates based on strategy
+                if (medicine && duplicateStrategy === 'skip') {
+                    results.skipped++;
+                    results.warnings.push({
+                        row: i + 2,
+                        name,
+                        message: 'Skipped - medicine already exists'
+                    });
+                    continue;
+                }
+
+                if (medicine && duplicateStrategy === 'update') {
+                    // Replace existing data
+                    medicine.stock = (stockToAdd + freeQuantityToAdd) * packSize;
+                    if (sellingPrice > 0) {
+                        medicine.price = sellingPrice;
+                        medicine.sellingPrice = sellingPrice;
+                    }
+                    if (costPrice > 0) medicine.costPrice = costPrice;
+                    if (mrp > 0) medicine.mrp = mrp;
+                    medicine.description = medicineData.description || medicineData.Description || medicine.description;
+                    medicine.category = medicineData.category || medicineData.Category || medicine.category;
+                    medicine.genericName = medicineData.genericName || medicineData.GenericName || medicine.genericName;
+                    medicine.inInventory = true;
+                    medicine.status = 'Active';
+                    medicine.lastUpdated = new Date();
+                    if (expiryDate) medicine.expiryDate = expiryDate;
+                    if (packSize > 1) medicine.packSize = packSize;
+
+                    await medicine.save();
+                    console.log(`[BULK IMPORT] Updated medicine: ${name}`);
+                } else if (medicine && duplicateStrategy === 'merge') {
+                    // Add to existing stock
                     medicine.stock = (medicine.stock || 0) + ((stockToAdd + freeQuantityToAdd) * packSize);
                     if (sellingPrice > 0) {
                         medicine.price = sellingPrice;
@@ -2538,9 +2609,23 @@ app.post('/api/medicines/bulk-import', authenticateToken, async (req, res) => {
                     if (packSize > 1) medicine.packSize = packSize;
 
                     await medicine.save();
-                    console.log(`[BULK IMPORT] Updated existing medicine: ${name}`);
+                    console.log(`[BULK IMPORT] Merged stock for: ${name}`);
                 } else {
                     // Create new medicine
+                    const supplierName = medicineData.supplier || medicineData.Supplier || 'Imported';
+                    let linkedSupplierId = null;
+
+                    // Auto-link supplier if enabled
+                    if (autoLinkSuppliers && supplierName) {
+                        const supplier = await Supplier.findOne({
+                            name: { $regex: new RegExp(`^${supplierName}$`, 'i') }
+                        });
+                        if (supplier) {
+                            linkedSupplierId = supplier._id;
+                            console.log(`[BULK IMPORT] Auto-linked supplier: ${supplierName}`);
+                        }
+                    }
+
                     medicine = new Medicine({
                         id: nextIdForNew++,
                         name: name,
@@ -2553,7 +2638,8 @@ app.post('/api/medicines/bulk-import', authenticateToken, async (req, res) => {
                         category: medicineData.category || medicineData.Category || 'General',
                         costPrice: costPrice,
                         minStock: parseInt(medicineData.minStock || medicineData.MinStock || 10) || 10,
-                        supplier: medicineData.supplier || medicineData.Supplier || 'Imported',
+                        supplier: supplierName,
+                        preferredSupplierId: linkedSupplierId,
                         formulaCode: medicineData.formulaCode || medicineData.FormulaCode || '',
                         genericName: medicineData.genericName || medicineData.GenericName || '',
                         shelfLocation: medicineData.shelfLocation || medicineData.ShelfLocation || '',
@@ -2568,18 +2654,17 @@ app.post('/api/medicines/bulk-import', authenticateToken, async (req, res) => {
                     console.log(`[BULK IMPORT] Created new medicine: ${name}`);
                 }
 
-                // ALWAYS Create/Update a Supply record so it appears in recent history and reports
-                // If stock was added, create a record.
-                if (stockToAdd > 0 || !medicine) {
+                // Create Supply record if enabled and stock was added
+                if (createSupplies && stockToAdd > 0) {
                     const newSupply = new Supply({
                         medicineId: medicine.id.toString(),
                         name: medicine.name,
-                        batchNumber: medicineData.batchNumber || medicineData.BatchNumber || `IMPORT-${new Date().getTime()}`,
+                        batchNumber: medicineData.batchNumber || medicineData.BatchNumber || `IMPORT-${Date.now()}-${i}`,
                         supplierName: medicineData.supplier || medicineData.Supplier || 'Bulk Import',
                         purchaseCost: costPrice,
-                        purchaseInvoiceNumber: 'BULK-IMPORT',
+                        purchaseInvoiceNumber: medicineData.invoiceNumber || medicineData.InvoiceNumber || 'BULK-IMPORT',
                         expiryDate: expiryDate,
-                        quantity: stockToAdd, // In packs
+                        quantity: stockToAdd,
                         packSize: packSize,
                         mrp: mrp,
                         sellingPrice: sellingPrice,
