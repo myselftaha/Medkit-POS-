@@ -37,9 +37,7 @@ import {
     AreaChart,
     Area
 } from 'recharts';
-
-// Mock Data removed - using API
-const mockData = {}; // Placeholder to prevent crash during refactor if references exist
+import API_URL from '../config/api';
 
 const Report = () => {
     const [activeTab, setActiveTab] = useState('Overview');
@@ -85,8 +83,8 @@ const Report = () => {
                 if (activeTab === 'Overview' || activeTab === 'Quick Reports') {
                     const token = localStorage.getItem('token');
                     const [analyticsRes, trendsRes] = await Promise.all([
-                        fetch(`/api/reports/analytics?${query}`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                        fetch(`/api/reports/sales-trends?${query}`, { headers: { 'Authorization': `Bearer ${token}` } })
+                        fetch(`${API_URL}/api/reports/analytics?${query}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                        fetch(`${API_URL}/api/reports/sales-trends?${query}`, { headers: { 'Authorization': `Bearer ${token}` } })
                     ]);
                     const analytics = await analyticsRes.json();
                     const trends = await trendsRes.json();
@@ -95,8 +93,8 @@ const Report = () => {
                     // Reuse or fetch new
                     const token = localStorage.getItem('token');
                     const [analyticsRes, trendsRes] = await Promise.all([
-                        fetch(`/api/reports/analytics?${query}`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                        fetch(`/api/reports/sales-trends?${query}`, { headers: { 'Authorization': `Bearer ${token}` } })
+                        fetch(`${API_URL}/api/reports/analytics?${query}`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                        fetch(`${API_URL}/api/reports/sales-trends?${query}`, { headers: { 'Authorization': `Bearer ${token}` } })
                     ]);
                     const analytics = await analyticsRes.json();
                     const trends = await trendsRes.json();
@@ -195,7 +193,7 @@ const Report = () => {
                     Growth: m.growth
                 }));
             } else if (title === 'Stock Valuation') {
-                const res = await fetch('/api/reports/inventory-health', {
+                const res = await fetch(`${API_URL}/api/reports/inventory-health`, {
                     headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
                 });
                 const inv = await res.json();
@@ -235,7 +233,7 @@ const Report = () => {
                     queryParams.endDate = customEnd;
                 }
                 const query = new URLSearchParams(queryParams);
-                const res = await fetch(`/api/transactions?${query}&limit=1000`, {
+                const res = await fetch(`${API_URL}/api/transactions?${query}&limit=1000`, {
                     headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
                 });
                 const data = await res.json();

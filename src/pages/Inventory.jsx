@@ -2,13 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Plus, Filter, Edit, Clock, AlertTriangle, ChevronDown, Download, CheckSquare, Square, ArrowUpDown, Save, MoreHorizontal, Calendar, TrendingUp, Package, DollarSign, X, AlertCircle, FileText, Brain } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import { useLocation, useNavigate } from 'react-router-dom';
-import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import AddToInventoryModal from '../components/inventory/AddToInventoryModal';
 import EditInventoryModal from '../components/inventory/EditInventoryModal';
 import API_URL from '../config/api';
 import { useSettings } from '../context/SettingsContext';
+import { downloadRowsAsCsv } from '../utils/excelUtils';
 
 // ... (rest of imports)
 
@@ -56,9 +56,14 @@ const Inventory = () => {
     }, [location]);
 
     useEffect(() => {
-        fetchMedicines();
-        fetchSupplies();
-        fetchEnrichedLowStock();
+        const loadInitialData = async () => {
+            const loadedMedicines = await fetchMedicines();
+            await Promise.all([
+                fetchSupplies(),
+                fetchEnrichedLowStock(loadedMedicines)
+            ]);
+        };
+        loadInitialData();
     }, []);
 
     const fetchMedicines = async () => {
@@ -67,10 +72,13 @@ const Inventory = () => {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
             const data = await response.json();
-            setMedicines(data.data || []);
+            const fetchedMedicines = data.data || [];
+            setMedicines(fetchedMedicines);
+            return fetchedMedicines;
         } catch (error) {
             console.error('Error fetching medicines:', error);
             showToast('Failed to fetch inventory', 'error');
+            return [];
         }
     };
 
@@ -86,15 +94,29 @@ const Inventory = () => {
         }
     };
 
-    const fetchEnrichedLowStock = async () => {
+    const fetchEnrichedLowStock = async (fallbackMedicines = medicines) => {
         try {
             const response = await fetch(`${API_URL}/api/medicines/low-stock`, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
-            const data = await response.json();
-            setEnrichedLowStockItems(data);
+            const data = await response.json().catch(() => []);
+            if (!response.ok) {
+                throw new Error(data?.message || `Failed to load low stock (${response.status})`);
+            }
+            setEnrichedLowStockItems(Array.isArray(data) ? data : []);
         } catch (error) {
             console.error('Error fetching low stock data:', error);
+            // Fallback: derive low stock from already-loaded medicine list.
+            const fallback = (Array.isArray(fallbackMedicines) ? fallbackMedicines : []).filter((med) => {
+                const packSize = Number(med.packSize) || 1;
+                const stockInPacks = (Number(med.stock) || 0) / packSize;
+                const globalThreshold = Number(settings?.lowStockThreshold) || 10;
+                const medicineThreshold = Number(med.reorderLevel || med.minStock || 0) || 0;
+                const threshold = Math.max(globalThreshold, medicineThreshold);
+                return stockInPacks <= threshold;
+            });
+            setEnrichedLowStockItems(fallback);
+            showToast('Low stock API unavailable. Showing fallback list.', 'warning');
         }
     };
 
@@ -107,10 +129,20 @@ const Inventory = () => {
             const response = await fetch(`${API_URL}/api/inventory/ai-low-stock`, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
-            const data = await response.json();
-            setAiData(data);
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data?.message || `Failed to load AI insights (${response.status})`);
+            }
+            setAiData({
+                summary: data.summary || { criticalCount: 0, highCount: 0, moderateCount: 0 },
+                predictions: Array.isArray(data.predictions) ? data.predictions : []
+            });
         } catch (error) {
             console.error('Error fetching AI data:', error);
+            setAiData({
+                summary: { criticalCount: 0, highCount: 0, moderateCount: 0 },
+                predictions: []
+            });
             showToast('Failed to load AI insights', 'error');
         } finally {
             setAiLoading(false);
@@ -250,7 +282,7 @@ const Inventory = () => {
         }
     };
 
-    const handleExport = (format = 'excel') => {
+    const handleExport = (format = 'csv') => {
         // Determine what data to export based on active tab
         let dataToExport = [];
         let sheetName = 'All Inventory';
@@ -269,9 +301,9 @@ const Inventory = () => {
                 sheetName = 'All Inventory';
         }
 
-        if (format === 'excel') {
-            // Prepare data for Excel
-            const excelData = dataToExport.map(item => ({
+        if (format === 'csv') {
+            // Prepare data for CSV
+            const csvData = dataToExport.map(item => ({
                 'ID': item.id || item._id,
                 'Name': item.name,
                 'Formula': item.genericName || item.formulaCode || '-',
@@ -284,12 +316,9 @@ const Inventory = () => {
                 'Expiry': item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : 'N/A'
             }));
 
-            const ws = XLSX.utils.json_to_sheet(excelData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, sheetName);
-            const fileName = `${sheetName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`;
-            XLSX.writeFile(wb, fileName);
-            showToast('Exported to Excel', 'success');
+            const fileName = `${sheetName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+            downloadRowsAsCsv(csvData, fileName, ['ID', 'Name', 'Formula', 'Category', 'Location', 'Stock (Packs)', 'MRP', 'Price', 'Status', 'Expiry']);
+            showToast('Exported to CSV', 'success');
         } else {
             // Handle PDF Export
             const doc = new jsPDF('l', 'mm', 'a4');
@@ -349,6 +378,12 @@ const Inventory = () => {
         return med.inInventory === true || med.stock > 0;
     });
 
+    const getEffectiveLowStockThreshold = (med) => {
+        const globalThreshold = Number(settings?.lowStockThreshold) || 10;
+        const medicineThreshold = Number(med?.reorderLevel || med?.minStock || 0) || 0;
+        return Math.max(globalThreshold, medicineThreshold);
+    };
+
     // ... (expiring and lowstock filters remain similar but use new derived data if needed)
     // Filter expiring items (expires within next 3 months) - FROM INVENTORY ITEMS ONLY
     const allExpiringItems = inventoryItems.filter(med => {
@@ -363,8 +398,7 @@ const Inventory = () => {
     const allLowStockItems = inventoryItems.filter(med => {
         const packSize = med.packSize || 1;
         const stockInPacks = (med.stock || 0) / packSize;
-        const minStockInPacks = med.minStock || 10;
-        return stockInPacks <= minStockInPacks;
+        return stockInPacks <= getEffectiveLowStockThreshold(med);
     });
 
     const inventoryItemsFiltered = getFilteredMedicines(inventoryItems);
@@ -391,7 +425,7 @@ const Inventory = () => {
             totalValue += retailVal;
             potentialProfit += (retailVal - costVal);
 
-            if (packs <= (item.minStock || 10)) lowStockCount++;
+            if (packs <= getEffectiveLowStockThreshold(item)) lowStockCount++;
 
             if (!categoryStats[item.category]) {
                 categoryStats[item.category] = {
@@ -425,7 +459,7 @@ const Inventory = () => {
             categoryList,
             topValueItems
         };
-    }, [inventoryItems]);
+    }, [inventoryItems, settings?.lowStockThreshold]);
 
     const getDisplayItems = () => {
         let items = [];
@@ -501,13 +535,13 @@ const Inventory = () => {
                         {showExportDropdown && (
                             <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-[60] animate-in fade-in slide-in-from-top-2 duration-200">
                                 <button
-                                    onClick={() => handleExport('excel')}
+                                    onClick={() => handleExport('csv')}
                                     className="w-full px-4 py-2.5 text-left text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors"
                                 >
                                     <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center text-green-600">
                                         <TrendingUp size={16} />
                                     </div>
-                                    <span>Export Excel</span>
+                                    <span>Export CSV</span>
                                 </button>
                                 <button
                                     onClick={() => handleExport('pdf')}
@@ -726,7 +760,13 @@ const Inventory = () => {
                                                         <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                                             <div
                                                                 className={`h-full rounded-full ${item.stock === 0 ? 'bg-red-500' : 'bg-yellow-500'}`}
-                                                                style={{ width: `${Math.min(((item.stock / (item.packSize || 1)) / (item.minStock || 10)) * 100, 100)}%` }}
+                                                                style={{
+                                                                    width: `${Math.min(
+                                                                        ((item.stock / (item.packSize || 1)) /
+                                                                            (item.lowStockThreshold || getEffectiveLowStockThreshold(item))) * 100,
+                                                                        100
+                                                                    )}%`
+                                                                }}
                                                             ></div>
                                                         </div>
                                                         <span className={`text-xs font-bold ${item.stock === 0 ? 'text-red-500' : 'text-yellow-600'}`}>

@@ -49,6 +49,13 @@ const Home = () => {
         billDate: new Date().toISOString().split('T')[0]
     });
 
+    const generateTransactionId = () => {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            return `TX-${crypto.randomUUID()}`;
+        }
+        return `TX-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    };
+
 
 
     const user = useMemo(() => {
@@ -68,7 +75,7 @@ const Home = () => {
         try {
             if (!isOnline) {
                 const localMeds = await getMedicinesFromLocal();
-                const q = (query || formula || '').toLowerCase();
+                const q = (query?.trim() || formula?.trim() || '').toLowerCase();
                 const filtered = localMeds.filter(m =>
                     m.name?.toLowerCase().includes(q) ||
                     m.formulaCode?.toLowerCase().includes(q) ||
@@ -79,14 +86,17 @@ const Home = () => {
             }
 
             const params = new URLSearchParams();
-            let effectiveQuery = query || '';
-            if (formula) effectiveQuery = formula;
+            const effectiveQuery = query?.trim() || formula?.trim() || '';
             if (effectiveQuery) params.append('q', effectiveQuery);
             params.append('limit', '50');
 
             const response = await fetch(`${API_URL}/api/medicines/search?${params.toString()}`, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
+            if (!response.ok) {
+                const errorBody = await response.json().catch(() => ({}));
+                throw new Error(errorBody.message || `Medicine search failed (${response.status})`);
+            }
             const data = await response.json();
 
             if (data && data.medicines) {
@@ -181,9 +191,12 @@ const Home = () => {
         const existingItem = cartItems.find(item => (item._id || item.id) === productId);
         const currentQty = existingItem ? existingItem.quantity : 0;
 
-        // Check stock (default to Single for now)
-        const packSize = product.packSize || 1;
-        const totalStockNeeded = currentQty + quantityToAdd;
+        // Default to pack sale for pack-based items to keep cart pricing consistent with list pricing.
+        const packSize = parseInt(product.packSize) || 1;
+        const defaultSaleType = packSize > 1 ? 'Pack' : 'Single';
+        const activeSaleType = existingItem?.saleType || defaultSaleType;
+        const unitsPerQty = activeSaleType === 'Pack' ? packSize : 1;
+        const totalStockNeeded = (currentQty + quantityToAdd) * unitsPerQty;
 
         const behavior = settings?.outOfStockBehavior || 'allow';
         const isOutOfStock = totalStockNeeded > (product.stock || 0);
@@ -209,13 +222,13 @@ const Home = () => {
                 id: productId,
                 quantity: quantityToAdd,
                 packSize: product.packSize || 1,
-                saleType: 'Single',
+                saleType: defaultSaleType,
                 discount: 0,
                 isUnit: false,
                 customPrice: null
             }];
         });
-    }, [cartItems, showToast]);
+    }, [cartItems, settings?.outOfStockBehavior, showToast]);
 
 
     const updateQuantity = (id, newQuantity) => {
@@ -360,7 +373,7 @@ const Home = () => {
                     showToast('Please select a customer or enter name and mobile', 'error');
                     return;
                 }
-                const newTxId = `#TX${Date.now()}`;
+                const newTxId = generateTransactionId();
                 setCurrentTransactionId(newTxId);
                 setIsBillModalOpen(true);
             }
@@ -449,7 +462,7 @@ const Home = () => {
         // (Comment about "regardless of backend" is now obsolete, we enforce backend save)
 
         // Use existing ID or generate new if missing (fallback)
-        const transactionId = currentTransactionId || `#TX${Date.now()}`;
+        const transactionId = currentTransactionId || generateTransactionId();
 
         // Prepare transaction data with clean item objects
         const transactionData = {
@@ -873,7 +886,7 @@ const Home = () => {
                                         showToast('Please select a customer or enter name and mobile', 'error');
                                         return;
                                     }
-                                    const newTxId = `#TX${Date.now()}`;
+                                    const newTxId = generateTransactionId();
                                     setCurrentTransactionId(newTxId);
                                     setIsBillModalOpen(true);
                                 }}

@@ -25,9 +25,7 @@ export const saveMedicinesToLocal = async (medicines) => {
     const tx = db.transaction('medicines', 'readwrite');
     const store = tx.objectStore('medicines');
 
-    // Clear old data
-    store.clear();
-
+    // Keep existing cache and upsert new records so offline search does not lose previous data.
     medicines.forEach(med => {
         store.put(med);
     });

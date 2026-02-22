@@ -234,6 +234,12 @@ const Medicines = () => {
         return result;
     }, [medicines, filters]);
 
+    const totalInStockMedicines = useMemo(() => {
+        const total = Number(stats.totalMedicines) || 0;
+        const outOfStock = Number(stats.outOfStockCount) || 0;
+        return Math.max(total - outOfStock, 0);
+    }, [stats.totalMedicines, stats.outOfStockCount]);
+
     const fetchSuppliers = useCallback(async () => {
         try {
             const response = await fetch(`${API_URL}/api/suppliers`, {
@@ -385,7 +391,7 @@ const Medicines = () => {
         setIsDetailsModalOpen(true);
     };
 
-    const handleExcelImport = async (excelData, options = {}) => {
+    const handleCsvImport = async (csvData, options = {}) => {
         try {
             const response = await fetch(`${API_URL}/api/medicines/bulk-import`, {
                 method: 'POST',
@@ -394,7 +400,7 @@ const Medicines = () => {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`
                 },
                 body: JSON.stringify({
-                    medicines: excelData,
+                    medicines: csvData,
                     ...options
                 })
             });
@@ -664,8 +670,10 @@ const Medicines = () => {
 
                 {/* Row 3: Results & Actions */}
                 <div className="px-4 py-3 flex items-center justify-between">
-                    <p className="text-sm text-gray-500">
-                        {groupedMedicines.length} medicines found
+                    <p className="text-sm text-gray-500 flex items-center gap-2">
+                        <span className="font-medium text-gray-700">{totalInStockMedicines} in stock</span>
+                        <span className="text-gray-300">|</span>
+                        <span>{groupedMedicines.length} medicines found</span>
                     </p>
 
                     <div className="flex items-center gap-3">
@@ -683,7 +691,7 @@ const Medicines = () => {
                             className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-md transition-colors bg-white"
                         >
                             <Upload size={14} />
-                            Import Excel
+                            Import CSV
                         </button>
 
                         <div className="relative">
@@ -1015,7 +1023,7 @@ const Medicines = () => {
             <ExcelImportModal
                 isOpen={isImportModalOpen}
                 onClose={() => setIsImportModalOpen(false)}
-                onImport={handleExcelImport}
+                onImport={handleCsvImport}
             />
 
             {/* Delete All Confirmation Modal */}

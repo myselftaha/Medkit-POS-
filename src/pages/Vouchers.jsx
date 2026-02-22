@@ -333,6 +333,7 @@ const Vouchers = () => {
             />
 
             <EditVoucherModal
+                key={`${selectedVoucher?._id || 'none'}-${isEditModalOpen ? 'open' : 'closed'}`}
                 isOpen={isEditModalOpen}
                 onClose={() => {
                     setIsEditModalOpen(false);

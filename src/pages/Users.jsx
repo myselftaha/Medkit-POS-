@@ -212,7 +212,13 @@ const Users = () => {
             )}
 
             <AddUserModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onSave={handleAddUser} />
-            <EditUserModal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} onSave={handleEditUser} user={selectedUser} />
+            <EditUserModal
+                key={`${selectedUser?._id || 'none'}-${isEditModalOpen ? 'open' : 'closed'}`}
+                isOpen={isEditModalOpen}
+                onClose={() => setIsEditModalOpen(false)}
+                onSave={handleEditUser}
+                user={selectedUser}
+            />
             <ResetPasswordModal isOpen={isResetModalOpen} onClose={() => setIsResetModalOpen(false)} onReset={handleResetPassword} username={selectedUser?.username} />
         </div>
     );

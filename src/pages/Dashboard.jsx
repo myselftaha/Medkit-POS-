@@ -54,7 +54,7 @@ const Dashboard = () => {
     const [categorySales, setCategorySales] = useState([]);
     const [topProducts, setTopProducts] = useState([]);
     const [recentTransactions, setRecentTransactions] = useState([]);
-    const [dateRange, setDateRange] = useState('Today');
+    const [dateRange, setDateRange] = useState('This Month');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
 
@@ -113,16 +113,18 @@ const Dashboard = () => {
                 }
 
                 setLoading(true);
-
-                // 1. Fetch Accurate Backend Stats (Respects user selected range)
                 const token = localStorage.getItem('token');
-                const statsResponse = await fetch(`${API_URL}/api/dashboard/stats?startDate=${startDate}&endDate=${endDate}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const statsData = await statsResponse.json();
+                const headers = { 'Authorization': `Bearer ${token}` };
 
-                // 2. Fetch Transactions for Charts (Always fetch last 30 days to ensure trends/charts work)
-                // Calculate 30 days ago from today
+                const readJson = async (response, fallbackMessage) => {
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(payload?.message || fallbackMessage);
+                    }
+                    return payload;
+                };
+
+                // Always fetch chart data for last 30 days.
                 const today = new Date();
                 const thirtyDaysAgo = new Date();
                 thirtyDaysAgo.setDate(today.getDate() - 30);
@@ -136,20 +138,23 @@ const Dashboard = () => {
                 const chartStart = toLocalISO(thirtyDaysAgo);
                 const chartEnd = toLocalISO(today);
 
-                const txResponse = await fetch(`${API_URL}/api/transactions?startDate=${chartStart}&endDate=${chartEnd}&limit=1000`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const txData = await txResponse.json();
-                const transactions = txData.data || []; // Handle pagination response structure
+                const [statsData, txData, medData, supplierData] = await Promise.all([
+                    fetch(`${API_URL}/api/dashboard/stats?startDate=${startDate}&endDate=${endDate}`, { headers })
+                        .then((res) => readJson(res, 'Failed to fetch dashboard stats')),
+                    fetch(`${API_URL}/api/transactions?startDate=${chartStart}&endDate=${chartEnd}&limit=1000`, { headers })
+                        .then((res) => readJson(res, 'Failed to fetch transactions')),
+                    fetch(`${API_URL}/api/medicines?limit=10000`, { headers })
+                        .then((res) => readJson(res, 'Failed to fetch medicines')),
+                    fetch(`${API_URL}/api/suppliers`, { headers })
+                        .then((res) => readJson(res, 'Failed to fetch suppliers'))
+                        .catch(() => [])
+                ]);
 
-                // 3. Fetch Medicines (Minimal version for category mapping)
-                const medResponse = await fetch(`${API_URL}/api/medicines?limit=10000`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const medData = await medResponse.json();
+                const transactions = txData.data || [];
                 const medicines = medData.data || [];
+                const suppliers = Array.isArray(supplierData) ? supplierData : [];
 
-                processDashboardData(statsData, transactions, medicines);
+                processDashboardData(statsData, transactions, medicines, suppliers);
             } catch (error) {
                 console.error("Error fetching dashboard data:", error);
             } finally {
@@ -158,26 +163,52 @@ const Dashboard = () => {
         };
 
         fetchData();
-    }, [dateRange, customStartDate, customEndDate]);
+    }, [dateRange, customStartDate, customEndDate, settings?.lowStockThreshold, settings?.expiryAlertDays]);
 
-    const processDashboardData = (backendStats, transactions, medicines) => {
+    const processDashboardData = (backendStats = {}, transactions = [], medicines = [], suppliers = []) => {
         const today = new Date();
-        const todayStr = today.toISOString().split('T')[0];
-
-        // 1. KPI Stats - Use Optimized Backend Data
         const lowStockThreshold = settings?.lowStockThreshold || 10;
-        const lowStockCount = medicines.filter(m => (m.stock || 0) <= (m.minStock || lowStockThreshold)).length;
+        const expiryAlertDays = settings?.expiryAlertDays || 30;
+
+        const expiryAlertDate = new Date(today);
+        expiryAlertDate.setDate(expiryAlertDate.getDate() + expiryAlertDays);
+
+        const lowStockCount = medicines.filter((m) => {
+            const packSize = Number(m.packSize) || 1;
+            const stockInPacks = (Number(m.stock) || 0) / packSize;
+            const medicineThreshold = Number(m.reorderLevel || m.minStock || 0) || 0;
+            const thresholdInPacks = Math.max(lowStockThreshold, medicineThreshold);
+            return stockInPacks <= thresholdInPacks;
+        }).length;
+
+        const expiryCandidates = medicines.filter((m) => {
+            if (!m.expiryDate) return false;
+            const expiryDate = new Date(m.expiryDate);
+            return expiryDate >= today && expiryDate <= expiryAlertDate;
+        });
+
+        const expiryValue = expiryCandidates.reduce((sum, m) => {
+            const packSize = Number(m.packSize) || 1;
+            const packs = (Number(m.stock) || 0) / packSize;
+            const price = Number(m.price || m.sellingPrice) || 0;
+            return sum + (packs * price);
+        }, 0);
+
+        const totalPayables = suppliers.reduce((sum, s) => {
+            const due = Number(s.totalPayable ?? s.dueAmount) || 0;
+            return sum + Math.max(due, 0);
+        }, 0);
 
         setStats({
-            todaySales: backendStats.raw.sales,
-            todayProfit: backendStats.raw.sales - backendStats.raw.expenses - backendStats.raw.returns, // Simple formula
-            todayReturns: backendStats.raw.returns,
-            todayReturnsCount: 0, // Placeholder
+            todaySales: Number(backendStats?.raw?.sales) || 0,
+            todayProfit: (Number(backendStats?.raw?.sales) || 0) - (Number(backendStats?.raw?.expenses) || 0) - (Number(backendStats?.raw?.returns) || 0),
+            todayReturns: Number(backendStats?.raw?.returns) || 0,
+            todayReturnsCount: transactions.filter((t) => t.type === 'Return').length,
             todayTransactions: 0, // Placeholder
-            totalPayables: 0, // Placeholder
-            expiryCount: 0, // Placeholder
-            expiryValue: 0,
-            lowStockCount: lowStockCount
+            totalPayables,
+            expiryCount: expiryCandidates.length,
+            expiryValue: Math.round(expiryValue),
+            lowStockCount
         });
 
         // 2. Sales Trend (Last 7 Days)
@@ -281,6 +312,21 @@ const Dashboard = () => {
             <div className="flex justify-between items-center">
                 <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
                 <div className="flex gap-4 items-center">
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="dashboard-range" className="text-xs font-semibold text-gray-500 uppercase">Range</label>
+                        <select
+                            id="dashboard-range"
+                            value={dateRange}
+                            onChange={(e) => handleDateRangeChange(e.target.value)}
+                            className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500/20"
+                        >
+                            <option value="Today">Today</option>
+                            <option value="Yesterday">Yesterday</option>
+                            <option value="This Week">This Week</option>
+                            <option value="This Month">This Month</option>
+                            <option value="Custom">Custom</option>
+                        </select>
+                    </div>
 
 
                     {/* Quick Actions Dropdown */}                    <div className="relative">

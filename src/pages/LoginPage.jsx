@@ -40,6 +40,7 @@ const LoginPage = () => {
             if (response.ok) {
                 localStorage.setItem('token', data.token);
                 localStorage.setItem('user', JSON.stringify(data.user));
+                window.dispatchEvent(new Event('auth-updated'));
                 showToast('Login Successful', 'success');
                 navigate('/');
             } else {

@@ -501,6 +501,7 @@ const Suppliers = () => {
 
             {/* Modals */}
             <AddDistributorModal
+                key={`${selectedSupplier?._id || 'new'}-${isEditMode ? 'edit' : 'create'}-${isAddModalOpen ? 'open' : 'closed'}`}
                 isOpen={isAddModalOpen}
                 onClose={() => setIsAddModalOpen(false)}
                 onSuccess={fetchSuppliers}

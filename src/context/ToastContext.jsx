@@ -94,6 +94,10 @@ const ToastItem = ({ id, type, title, message, onClose }) => {
 export const ToastProvider = ({ children }) => {
     const [toasts, setToasts] = useState([]);
 
+    const removeToast = useCallback((id) => {
+        setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    }, []);
+
     const showToast = useCallback((message, type = 'info', title) => {
         const id = Date.now().toString();
         
@@ -134,11 +138,7 @@ export const ToastProvider = ({ children }) => {
         }, 4000);
 
         return id;
-    }, []);
-
-    const removeToast = useCallback((id) => {
-        setToasts((prev) => prev.filter((toast) => toast.id !== id));
-    }, []);
+    }, [removeToast]);
 
     return (
         <ToastContext.Provider value={{ showToast, removeToast }}>

@@ -2,22 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { X, UserCog } from 'lucide-react';
 import { USER_ROLES } from '../../config/roles';
 
-const EditUserModal = ({ isOpen, onClose, onSave, user }) => {
-    const [formData, setFormData] = useState({
-        role: '',
-        status: '',
-        permissions: []
-    });
+const getInitialFormData = (user) => ({
+    role: user?.role || '',
+    status: user?.status || 'Active',
+    permissions: user?.permissions || []
+});
 
-    useEffect(() => {
-        if (user) {
-            setFormData({
-                role: user.role,
-                status: user.status,
-                permissions: user.permissions || []
-            });
-        }
-    }, [user]);
+const EditUserModal = ({ isOpen, onClose, onSave, user }) => {
+    const [formData, setFormData] = useState(() => getInitialFormData(user));
 
     useEffect(() => {
         const handleEsc = (e) => {
@@ -39,7 +31,7 @@ const EditUserModal = ({ isOpen, onClose, onSave, user }) => {
         onSave(user._id, formData);
     };
 
-    const roles = Object.values(USER_ROLES);
+    const roles = [...new Set(Object.values(USER_ROLES))];
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">

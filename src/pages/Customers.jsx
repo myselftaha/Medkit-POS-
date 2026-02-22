@@ -20,10 +20,6 @@ const Customers = () => {
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
 
-    useEffect(() => {
-        handleDateFilterChange('Today');
-    }, []);
-
     const fetchCustomers = async (startDate = null, endDate = null) => {
         try {
             let url = `${API_URL}/api/customers?`;
@@ -69,21 +65,24 @@ const Customers = () => {
                 startDate = formatDate(now);
                 endDate = formatDate(now);
                 break;
-            case 'Yesterday':
+            case 'Yesterday': {
                 const yesterday = new Date(now);
                 yesterday.setDate(yesterday.getDate() - 1);
                 startDate = formatDate(yesterday);
                 endDate = formatDate(yesterday);
                 break;
-            case 'Week':
+            }
+            case 'Week': {
                 const lastWeek = new Date(now);
                 lastWeek.setDate(lastWeek.getDate() - 7);
                 startDate = formatDate(lastWeek);
                 break;
-            case 'Month':
+            }
+            case 'Month': {
                 const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
                 startDate = formatDate(thisMonth);
                 break;
+            }
             case 'Custom':
                 return { startDate: customStartDate, endDate: customEndDate };
             default:
@@ -100,6 +99,10 @@ const Customers = () => {
             fetchCustomers(startDate, endDate);
         }
     };
+
+    useEffect(() => {
+        handleDateFilterChange('Today');
+    }, []);
 
     // Handle custom date apply
     const handleCustomDateApply = () => {
@@ -355,18 +358,18 @@ const Customers = () => {
                                     <div className="flex flex-col gap-1">
                                         <div className="flex items-center gap-2 text-xs text-gray-500">
                                             <Mail size={12} className="text-gray-300" />
-                                            <span>{customer.email || '—'}</span>
+                                            <span>{customer.email || '-'}</span>
                                         </div>
                                         <div className="flex items-center gap-2 text-xs text-gray-500">
                                             <Phone size={12} className="text-gray-300" />
-                                            <span>{customer.phone || '—'}</span>
+                                            <span>{customer.phone || '-'}</span>
                                         </div>
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-2 text-xs text-gray-500">
                                         <MapPin size={12} className="text-gray-300 shrink-0" />
-                                        <span className="max-w-[140px] truncate">{customer.address || '—'}</span>
+                                        <span className="max-w-[140px] truncate">{customer.address || '-'}</span>
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">
@@ -441,6 +444,7 @@ const Customers = () => {
             />
 
             <EditCustomerModal
+                key={`${selectedCustomer?._id || selectedCustomer?.id || 'none'}-${isEditModalOpen ? 'open' : 'closed'}`}
                 isOpen={isEditModalOpen}
                 onClose={() => setIsEditModalOpen(false)}
                 customer={selectedCustomer}
@@ -451,3 +455,4 @@ const Customers = () => {
 };
 
 export default Customers;
+

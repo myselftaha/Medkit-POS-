@@ -1,25 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, Trash2, ChevronDown, Banknote, CreditCard } from 'lucide-react';
 import { useSettings } from '../../context/SettingsContext';
 
 const CartItem = ({ item, onUpdateQuantity, onUpdateSaleType, onUpdateDiscount, onUpdateIsUnit, onUpdateCustomPrice, onRemove }) => {
     // Initialize with prop value converted to string, empty if 1
-    const [localQuantity, setLocalQuantity] = useState(item.quantity > 1 ? item.quantity.toString() : '');
-    const [localDiscount, setLocalDiscount] = useState(item.discount || '0');
-    const [localPrice, setLocalPrice] = useState(item.customPrice || item.price);
-
-    // Sync local state when prop updates
-    useEffect(() => {
-        setLocalQuantity(item.quantity > 1 ? item.quantity.toString() : '');
-    }, [item.quantity]);
-
-    useEffect(() => {
-        setLocalDiscount(item.discount || '0');
-    }, [item.discount]);
-
-    useEffect(() => {
-        setLocalPrice(item.customPrice || item.price);
-    }, [item.customPrice, item.price]);
+    const [localQuantity, setLocalQuantity] = useState(() => item.quantity > 1 ? item.quantity.toString() : '');
+    const [localDiscount, setLocalDiscount] = useState(() => String(item.discount || '0'));
+    const [localPrice, setLocalPrice] = useState(() => String(item.customPrice || item.price));
 
     const handleQuantityChange = (e) => {
         const val = e.target.value;
@@ -60,7 +47,7 @@ const CartItem = ({ item, onUpdateQuantity, onUpdateSaleType, onUpdateDiscount, 
 
     const handlePriceBlur = () => {
         const numVal = parseFloat(localPrice) || item.price;
-        setLocalPrice(numVal);
+        setLocalPrice(numVal.toString());
         onUpdateCustomPrice(item._id || item.id, numVal);
     };
 
@@ -126,7 +113,7 @@ const CartItem = ({ item, onUpdateQuantity, onUpdateSaleType, onUpdateDiscount, 
                         onChange={(e) => onUpdateSaleType(item._id || item.id, e.target.value)}
                         className="w-full h-9 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg pl-3 pr-8 shadow-sm appearance-none focus:outline-none focus:border-[#00c950] focus:ring-1 focus:ring-[#00c950] hover:border-[#00c950] transition-colors cursor-pointer"
                     >
-                        <option value="Single">Single</option>
+                        <option value="Single">Unit</option>
                         <option value="Pack">Pack</option>
                     </select>
                     <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
@@ -233,7 +220,8 @@ const Cart = ({
                                 <th className="text-left py-2 px-2 font-semibold">Item</th>
                                 <th className="text-left py-2 px-1 font-semibold">Qty</th>
                                 <th className="text-left py-2 px-1 font-semibold">Type</th>
-                                <th className="text-left py-2 px-1 font-semibold">Price</th>
+                                <th className="text-left py-2 px-1 font-semibold">Base Price</th>
+                                <th className="text-left py-2 px-1 font-semibold">Unit Price</th>
                                 <th className="text-right py-2 px-2 font-semibold">Total</th>
                                 <th className="text-center py-2 px-1 font-semibold"></th>
                             </tr>
@@ -241,7 +229,7 @@ const Cart = ({
                         <tbody>
                             {items.map((item) => (
                                 <CartItem
-                                    key={item._id || item.id}
+                                    key={`${item._id || item.id}-${item.quantity}-${item.discount || 0}-${item.customPrice || item.price}`}
                                     item={item}
                                     onUpdateQuantity={onUpdateQuantity}
                                     onUpdateSaleType={onUpdateSaleType}

@@ -48,6 +48,12 @@ export const SettingsProvider = ({ children }) => {
 
     useEffect(() => {
         fetchSettings();
+        const handleAuthUpdated = () => {
+            fetchSettings();
+        };
+
+        window.addEventListener('auth-updated', handleAuthUpdated);
+        return () => window.removeEventListener('auth-updated', handleAuthUpdated);
     }, []);
 
     const updateSettings = async (newSettings) => {

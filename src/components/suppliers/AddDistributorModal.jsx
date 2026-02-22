@@ -3,47 +3,36 @@ import { X } from 'lucide-react';
 import API_URL from '../../config/api';
 import { useToast } from '../../context/ToastContext';
 
+const DEFAULT_FORM_DATA = {
+    name: '',
+    contactPerson: '',
+    phone: '',
+    email: '',
+    whatsappNumber: '',
+    address: '',
+    city: '',
+    creditDays: 30,
+    totalPayable: 0
+};
+
+const getInitialFormData = (initialData, isEditMode) => {
+    if (!isEditMode || !initialData) return { ...DEFAULT_FORM_DATA };
+    return {
+        name: initialData.name || '',
+        contactPerson: initialData.contactPerson || '',
+        phone: initialData.phone || '',
+        email: initialData.email || '',
+        whatsappNumber: initialData.whatsappNumber || '',
+        address: initialData.address || '',
+        city: initialData.city || '',
+        creditDays: initialData.creditDays || 30,
+        totalPayable: initialData.totalPayable || 0
+    };
+};
+
 const AddDistributorModal = ({ isOpen, onClose, onSuccess, initialData = null, isEditMode = false }) => {
     const { showToast } = useToast();
-    const [formData, setFormData] = useState({
-        name: '',
-        contactPerson: '',
-        phone: '',
-        email: '',
-        whatsappNumber: '',
-        address: '',
-        city: '',
-        creditDays: 30,
-        totalPayable: 0
-    });
-
-    useEffect(() => {
-        if (isEditMode && initialData) {
-            setFormData({
-                name: initialData.name || '',
-                contactPerson: initialData.contactPerson || '',
-                phone: initialData.phone || '',
-                email: initialData.email || '',
-                whatsappNumber: initialData.whatsappNumber || '',
-                address: initialData.address || '',
-                city: initialData.city || '',
-                creditDays: initialData.creditDays || 30,
-                totalPayable: initialData.totalPayable || 0
-            });
-        } else if (!isOpen) {
-            setFormData({
-                name: '',
-                contactPerson: '',
-                phone: '',
-                email: '',
-                whatsappNumber: '',
-                address: '',
-                city: '',
-                creditDays: 30,
-                totalPayable: 0
-            });
-        }
-    }, [isEditMode, initialData, isOpen]);
+    const [formData, setFormData] = useState(() => getInitialFormData(initialData, isEditMode));
 
     useEffect(() => {
         const handleEsc = (e) => {
@@ -63,9 +52,6 @@ const AddDistributorModal = ({ isOpen, onClose, onSuccess, initialData = null, i
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-
-        // Debug: Log the data being sent
-        console.log('Submitting distributor data:', formData);
 
         try {
             const url = isEditMode
@@ -104,8 +90,12 @@ const AddDistributorModal = ({ isOpen, onClose, onSuccess, initialData = null, i
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl animate-in fade-in zoom-in duration-200">
                 <div className="flex justify-between items-center px-6 py-5 border-b border-gray-100">
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900">Add New Distributor</h2>
-                        <p className="text-sm text-gray-500 mt-0.5">Add a new medicine supplier or wholesaler to your system.</p>
+                        <h2 className="text-xl font-bold text-gray-900">{isEditMode ? 'Edit Distributor' : 'Add New Distributor'}</h2>
+                        <p className="text-sm text-gray-500 mt-0.5">
+                            {isEditMode
+                                ? 'Update distributor details and credit terms.'
+                                : 'Add a new medicine supplier or wholesaler to your system.'}
+                        </p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-all">
                         <X size={20} />
@@ -250,7 +240,7 @@ const AddDistributorModal = ({ isOpen, onClose, onSuccess, initialData = null, i
                             type="submit"
                             className="flex-1 px-6 py-2.5 bg-[#00c950] hover:bg-[#00b347] text-white rounded-lg font-medium text-sm transition-all shadow-sm"
                         >
-                            Add Distributor
+                            {isEditMode ? 'Update Distributor' : 'Add Distributor'}
                         </button>
                     </div>
                 </form>

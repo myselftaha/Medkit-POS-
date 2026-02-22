@@ -1,23 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save } from 'lucide-react';
 
-const EditCustomerModal = ({ isOpen, onClose, customer, onSave }) => {
-    const [formData, setFormData] = useState({
-        name: '',
-        email: '',
-        phone: '',
-        address: ''
-    });
+const getInitialFormData = (customer) => ({
+    name: customer?.name || '',
+    email: customer?.email || '',
+    phone: customer?.phone || '',
+    address: customer?.address || ''
+});
 
-    useEffect(() => {
-        if (customer) {
-            setFormData({
-                name: customer.name || '',
-                email: customer.email || '',
-                phone: customer.phone || '',
-            });
-        }
-    }, [customer]);
+const EditCustomerModal = ({ isOpen, onClose, customer, onSave }) => {
+    const [formData, setFormData] = useState(() => getInitialFormData(customer));
 
     useEffect(() => {
         const handleEsc = (e) => {

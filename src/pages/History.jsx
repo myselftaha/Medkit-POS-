@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
 import { Search, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import TransactionTable from '../components/history/TransactionTable';
 import TransactionDetailsModal from '../components/history/TransactionDetailsModal';
 import SummaryBar from '../components/history/SummaryBar';

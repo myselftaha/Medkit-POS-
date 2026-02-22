@@ -1,0 +1,5 @@
+name,genericName,description,category,sellingPrice,costPrice,mrp,stock,unit,packSize,minStock,supplier,batchNumber,expiryDate,formulaCode,shelfLocation,status
+QA Paracetamol 500mg,Paracetamol,QA test item - pain relief,Pain Relief,25,15,30,20,Tablets,10,5,QA Supplier A,QA-PARA-2026-01,2027-12-31,QA-PARA500,A-01,Active
+QA Amoxicillin 250mg,Amoxicillin,QA test item - antibiotic,Antibiotics,80,55,90,15,Capsules,10,5,QA Supplier A,QA-AMOX-2026-01,2027-10-31,QA-AMOX250,A-02,Active
+QA Cetirizine 10mg,Cetirizine,QA test item - antihistamine,Antihistamines,35,20,40,10,Tablets,10,4,QA Supplier B,QA-CET-2026-01,2027-09-30,QA-CET10,B-01,Active
+QA Omeprazole 20mg,Omeprazole,QA test item - acidity,Gastrointestinal,70,45,80,12,Capsules,10,4,QA Supplier B,QA-OME-2026-01,2027-11-30,QA-OME20,B-02,Active

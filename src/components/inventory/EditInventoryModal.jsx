@@ -2,6 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, Info, Tag, Package, Percent, DollarSign, MapPin } from 'lucide-react';
 
 const EditInventoryModal = ({ isOpen, onClose, onConfirm, product }) => {
+    const calculateMargin = (price, cost) => {
+        const parsedPrice = parseFloat(price);
+        const parsedCost = parseFloat(cost);
+        if (!parsedPrice || !parsedCost || parsedPrice === 0) return '0.00';
+        const margin = ((parsedPrice - parsedCost) / parsedPrice) * 100;
+        return margin.toFixed(2);
+    };
+
     const [formData, setFormData] = useState({
         name: '',
         genericName: '', // Formula Code
@@ -47,12 +55,6 @@ const EditInventoryModal = ({ isOpen, onClose, onConfirm, product }) => {
             });
         }
     }, [isOpen, product]);
-
-    const calculateMargin = (price, cost) => {
-        if (!price || !cost || parseFloat(price) === 0) return '0.00';
-        const margin = ((parseFloat(price) - parseFloat(cost)) / parseFloat(price)) * 100;
-        return margin.toFixed(2);
-    };
 
     const handlePriceChange = (field, value) => {
         setFormData(prev => {

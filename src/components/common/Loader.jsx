@@ -1,5 +1,3 @@
-import React from 'react';
-
 const Loader = ({ size = 'md', message = '', fullscreen = false, type = 'spinner' }) => {
   // Size constraints
   const dimensions = {
@@ -12,7 +10,7 @@ const Loader = ({ size = 'md', message = '', fullscreen = false, type = 'spinner
   const currentDim = dimensions[size] || dimensions.md;
 
   // Premium Spinner: sleek ring with fading tail
-  const SpinnerLoader = () => (
+  const renderSpinner = () => (
     <div className={`relative ${currentDim.w} ${currentDim.h}`}>
       <div className="absolute inset-0 rounded-full border-4 border-[#00c950]/20"></div>
       <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-[#00c950] animate-spin"></div>
@@ -20,7 +18,7 @@ const Loader = ({ size = 'md', message = '', fullscreen = false, type = 'spinner
   );
 
   // Pharmacy-Themed Pill Loader: A capsule spinning or floating
-  const PillLoader = () => (
+  const renderPill = () => (
     <div className={`relative ${currentDim.w} ${currentDim.h} flex items-center justify-center animate-bounce-gentle`}>
       <div className="relative w-full h-full animate-spin-slow">
         {/* Capsule Half 1 */}
@@ -34,7 +32,7 @@ const Loader = ({ size = 'md', message = '', fullscreen = false, type = 'spinner
   );
 
   // Refined Wave Loader
-  const WaveLoader = () => (
+  const renderWave = () => (
     <div className="flex items-center space-x-1 h-full min-h-[2rem]">
       {[...Array(5)].map((_, i) => (
         <div
@@ -53,17 +51,17 @@ const Loader = ({ size = 'md', message = '', fullscreen = false, type = 'spinner
   const renderLoader = () => {
     switch (type) {
       case 'pill':
-        return <PillLoader />;
+        return renderPill();
       case 'wave':
-        return <WaveLoader />;
+        return renderWave();
       case 'cross': // Mapping cross to pill for modern pharmacy feel if strictly requested, or just standard spinner
       case 'spinner':
       default:
-        return <SpinnerLoader />;
+        return renderSpinner();
     }
   };
 
-  const Content = () => (
+  const content = (
     <div className="flex flex-col items-center justify-center gap-4">
       {renderLoader()}
       {message && (
@@ -78,7 +76,7 @@ const Loader = ({ size = 'md', message = '', fullscreen = false, type = 'spinner
     return (
       <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-white/60 backdrop-blur-md transition-all duration-300">
         <div className="bg-white p-8 rounded-2xl shadow-2xl border border-gray-100 flex flex-col items-center">
-          <Content />
+          {content}
         </div>
       </div>
     );
@@ -86,14 +84,16 @@ const Loader = ({ size = 'md', message = '', fullscreen = false, type = 'spinner
 
   return (
     <div className="flex items-center justify-center py-4">
-      <Content />
+      {content}
     </div>
   );
 };
 
 // Add styles required for custom animations
-const style = document.createElement('style');
-style.innerHTML = `
+if (typeof document !== 'undefined' && !document.getElementById('loader-animations')) {
+  const style = document.createElement('style');
+  style.id = 'loader-animations';
+  style.innerHTML = `
   @keyframes wave {
     0%, 100% { transform: scaleY(0.5); opacity: 0.5; }
     50% { transform: scaleY(1); opacity: 1; }
@@ -116,6 +116,7 @@ style.innerHTML = `
     animation: bounce-gentle 2s ease-in-out infinite;
   }
 `;
-document.head.appendChild(style);
+  document.head.appendChild(style);
+}
 
 export default Loader;

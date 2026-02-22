@@ -179,6 +179,7 @@ const Sidebar = ({ isHoveredExternally, onHoverChange }) => {
     const handleLogout = () => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        window.dispatchEvent(new Event('auth-updated'));
         navigate('/login');
     };
 

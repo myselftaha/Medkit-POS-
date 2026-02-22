@@ -28,16 +28,29 @@
         try {
             const response = await originalFetch(resource, config);
 
-            // Handle 401/403 - Authentication failure
+            // Handle auth failures, but do not log out users on pure RBAC 403 responses.
             if (response.status === 401 || response.status === 403) {
                 // Check if the URL is NOT the login endpoint (to avoid redirect loops during login)
                 const url = typeof resource === 'string' ? resource : resource.url;
                 if (!url.includes('/api/users/login')) {
-                    console.warn(`[AUTH] Authentication failed (${response.status}) for: ${url}. Redirecting to login...`);
+                    let shouldLogout = response.status === 401;
+
+                    if (response.status === 403) {
+                        const errorBody = await response.clone().json().catch(() => ({}));
+                        const message = (errorBody?.message || '').toLowerCase();
+                        shouldLogout = message.includes('invalid or expired token') || message.includes('authentication required');
+                    }
+
+                    if (!shouldLogout) {
+                        return response;
+                    }
+
+                    console.warn(`[AUTH] Session invalid (${response.status}) for: ${url}. Redirecting to login...`);
 
                     // Clear user session data
                     localStorage.removeItem('token');
                     localStorage.removeItem('user');
+                    window.dispatchEvent(new Event('auth-updated'));
 
                     // Small delay to let any pending toasts or state updates finish
                     setTimeout(() => {

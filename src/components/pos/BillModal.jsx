@@ -141,7 +141,7 @@ const BillModal = ({ isOpen, onClose, items, total, onPrint, customer, discount 
                         <p className="text-[10px] text-gray-400 mt-2">Powered by MedKit POS</p>
 
                         {/* QR Code */}
-                        {(settings?.showQRCode || true) && (
+                        {(settings?.showQRCode ?? true) && (
                             <div className="flex justify-center mt-4 pt-2 border-t border-dashed border-gray-200">
                                 <QRCodeCanvas
                                     value={JSON.stringify({

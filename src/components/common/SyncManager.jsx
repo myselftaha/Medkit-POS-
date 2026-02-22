@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { getPendingTransactions, clearPendingTransaction, updatePendingTransaction, initDB } from '../../utils/offlineSync';
 import API_URL from '../../config/api';
 import { useToast } from '../../context/ToastContext';
@@ -7,14 +7,14 @@ const MAX_RETRIES = 3;
 
 const SyncManager = ({ children }) => {
     const { showToast } = useToast();
-    const [syncing, setSyncing] = useState(false);
+    const syncingRef = useRef(false);
 
     useEffect(() => {
         const syncData = async () => {
             // Prevent concurrent syncs
-            if (syncing || !navigator.onLine) return;
+            if (syncingRef.current || !navigator.onLine) return;
 
-            setSyncing(true);
+            syncingRef.current = true;
 
             try {
                 const pending = await getPendingTransactions();
@@ -27,7 +27,7 @@ const SyncManager = ({ children }) => {
                     if (exhausted.length > 0) {
                         console.warn(`[SYNC] ${exhausted.length} transactions have exhausted retries`);
                     }
-                    setSyncing(false);
+                    syncingRef.current = false;
                     return;
                 }
 
@@ -36,7 +36,7 @@ const SyncManager = ({ children }) => {
                 const token = localStorage.getItem('token');
                 if (!token) {
                     console.error('[SYNC] No auth token found');
-                    setSyncing(false);
+                    syncingRef.current = false;
                     return;
                 }
 
@@ -47,7 +47,7 @@ const SyncManager = ({ children }) => {
                     try {
                         console.log(`[SYNC] Attempting to sync: ${item.data.transactionId} (Retry ${item.data.retryCount || 0}/${MAX_RETRIES})`);
 
-                        const response = await fetch(`${API_URL}/api/transactions`, {
+                        const response = await fetch(`${API_URL}/api/transactions/sync`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -99,7 +99,7 @@ const SyncManager = ({ children }) => {
             } catch (error) {
                 console.error('[SYNC] Sync process error:', error);
             } finally {
-                setSyncing(false);
+                syncingRef.current = false;
             }
         };
 
@@ -114,7 +114,16 @@ const SyncManager = ({ children }) => {
             setTimeout(syncData, 1000); // Small delay to let app initialize
         }
 
-        return () => window.removeEventListener('online', syncData);
+        const retryInterval = setInterval(() => {
+            if (navigator.onLine) {
+                syncData();
+            }
+        }, 60000);
+
+        return () => {
+            window.removeEventListener('online', syncData);
+            clearInterval(retryInterval);
+        };
     }, [showToast]); // Only depend on showToast, syncing is in state
 
     return <>{children}</>;

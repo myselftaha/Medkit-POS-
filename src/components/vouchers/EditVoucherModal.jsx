@@ -1,35 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { X, Ticket } from 'lucide-react';
 
-const EditVoucherModal = ({ isOpen, onClose, voucher, onSave }) => {
-    const [formData, setFormData] = useState({
-        code: '',
-        description: '',
-        discountType: 'Percentage',
-        discountValue: '',
-        minPurchase: '0',
-        maxDiscount: '',
-        validFrom: '',
-        validUntil: '',
-        maxUses: ''
-    });
-    const [errors, setErrors] = useState({});
+const formatDateInputValue = (dateValue) => {
+    if (!dateValue) return '';
+    const parsedDate = new Date(dateValue);
+    return Number.isNaN(parsedDate.getTime()) ? '' : parsedDate.toISOString().split('T')[0];
+};
 
-    useEffect(() => {
-        if (voucher) {
-            setFormData({
-                code: voucher.code,
-                description: voucher.description,
-                discountType: voucher.discountType,
-                discountValue: voucher.discountValue.toString(),
-                minPurchase: voucher.minPurchase.toString(),
-                maxDiscount: voucher.maxDiscount ? voucher.maxDiscount.toString() : '',
-                validFrom: new Date(voucher.validFrom).toISOString().split('T')[0],
-                validUntil: new Date(voucher.validUntil).toISOString().split('T')[0],
-                maxUses: voucher.maxUses.toString()
-            });
-        }
-    }, [voucher]);
+const getInitialFormData = (voucher) => ({
+    code: voucher?.code || '',
+    description: voucher?.description || '',
+    discountType: voucher?.discountType || 'Percentage',
+    discountValue: voucher?.discountValue != null ? voucher.discountValue.toString() : '',
+    minPurchase: voucher?.minPurchase != null ? voucher.minPurchase.toString() : '0',
+    maxDiscount: voucher?.maxDiscount != null ? voucher.maxDiscount.toString() : '',
+    validFrom: formatDateInputValue(voucher?.validFrom),
+    validUntil: formatDateInputValue(voucher?.validUntil),
+    maxUses: voucher?.maxUses != null ? voucher.maxUses.toString() : ''
+});
+
+const EditVoucherModal = ({ isOpen, onClose, voucher, onSave }) => {
+    const [formData, setFormData] = useState(() => getInitialFormData(voucher));
+    const [errors, setErrors] = useState({});
 
     useEffect(() => {
         const handleEsc = (e) => {

@@ -1,37 +1,62 @@
-import React, { useState, useEffect } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import MainLayout from './components/layout/MainLayout';
-import Dashboard from './pages/Dashboard';
-import Home from './pages/Home';
-import History from './pages/History';
-import Medicines from './pages/Medicines';
-import Suppliers from './pages/Suppliers';
-import Inventory from './pages/Inventory';
-import SupplierDetails from './pages/SupplierDetails';
-import LoginPage from './pages/LoginPage';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import API_URL from './config/api';
-
-import Users from './pages/Users';
-import Customers from './pages/Customers';
-import Vouchers from './pages/Vouchers';
-import Return from './pages/Return';
-import Report from './pages/Report';
-import Staff from './pages/Staff';
-import CashDrawer from './pages/CashDrawer';
-import OwnerSetup from './pages/OwnerSetup';
-import LoaderDemo from './pages/LoaderDemo';
-import ExpiryManagement from './pages/ExpiryManagement';
 import Loader from './components/common/Loader';
-import { ToastProvider } from './context/ToastContext';
 import { USER_ROLES } from './config/roles';
 
 import SyncManager from './components/common/SyncManager';
 import { SettingsProvider } from './context/SettingsContext';
-import Settings from './pages/Settings';
 import { NotificationProvider } from './context/NotificationContext';
-import Notifications from './pages/Notifications';
-import EmailReports from './pages/EmailReports';
+
+const MainLayout = lazy(() => import('./components/layout/MainLayout'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Home = lazy(() => import('./pages/Home'));
+const History = lazy(() => import('./pages/History'));
+const Medicines = lazy(() => import('./pages/Medicines'));
+const Suppliers = lazy(() => import('./pages/Suppliers'));
+const Inventory = lazy(() => import('./pages/Inventory'));
+const SupplierDetails = lazy(() => import('./pages/SupplierDetails'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const Users = lazy(() => import('./pages/Users'));
+const Customers = lazy(() => import('./pages/Customers'));
+const Vouchers = lazy(() => import('./pages/Vouchers'));
+const Return = lazy(() => import('./pages/Return'));
+const Report = lazy(() => import('./pages/Report'));
+const Staff = lazy(() => import('./pages/Staff'));
+const CashDrawer = lazy(() => import('./pages/CashDrawer'));
+const OwnerSetup = lazy(() => import('./pages/OwnerSetup'));
+const LoaderDemo = lazy(() => import('./pages/LoaderDemo'));
+const ExpiryManagement = lazy(() => import('./pages/ExpiryManagement'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const EmailReports = lazy(() => import('./pages/EmailReports'));
+
+const ROLE_REDIRECTS = {
+  [USER_ROLES.OWNER]: '/dashboard',
+  [USER_ROLES.STORE_MANAGER]: '/dashboard',
+  [USER_ROLES.ADMIN]: '/dashboard',
+  [USER_ROLES.SUPER_ADMIN]: '/dashboard',
+  [USER_ROLES.PHARMACIST]: '/medicines',
+  [USER_ROLES.COUNTER_SALESMAN]: '/pos',
+  [USER_ROLES.ACCOUNTANT]: '/reports',
+  [USER_ROLES.HELPER]: '/inventory',
+};
+
+function RootRedirect() {
+  try {
+    const userStr = localStorage.getItem('user');
+    const user = userStr ? JSON.parse(userStr) : null;
+    if (!user?.role) {
+      return <Navigate to="/login" replace />;
+    }
+
+    const redirectPath = ROLE_REDIRECTS[user.role] || '/pos';
+    return <Navigate to={redirectPath} replace />;
+  } catch {
+    return <Navigate to="/login" replace />;
+  }
+}
 
 function App() {
   const [setupStatus, setSetupStatus] = useState({ isSetupCompleted: false, loading: true });
@@ -63,46 +88,16 @@ function App() {
     );
   }
 
-
-
-  // ... imports remain same ...
-
-  const RootRedirect = () => {
-    const userStr = localStorage.getItem('user');
-    const user = userStr ? JSON.parse(userStr) : null;
-
-    if (!user) return <Navigate to="/login" replace />;
-
-    switch (user.role) {
-      case USER_ROLES.OWNER:
-      case USER_ROLES.STORE_MANAGER:
-      case USER_ROLES.ADMIN:
-      case USER_ROLES.SUPER_ADMIN:
-        return <Navigate to="/dashboard" replace />;
-
-      case USER_ROLES.PHARMACIST:
-        return <Navigate to="/medicines" replace />; // Focus on stock
-
-      case USER_ROLES.COUNTER_SALESMAN:
-        return <Navigate to="/pos" replace />;
-
-      case USER_ROLES.ACCOUNTANT:
-        return <Navigate to="/reports" replace />;
-
-      case USER_ROLES.HELPER:
-        return <Navigate to="/inventory" replace />;
-
-      default:
-        return <Navigate to="/pos" replace />;
-    }
-  };
-
   return (
-    <ToastProvider>
-      <SettingsProvider>
-        <SyncManager>
-          <NotificationProvider>
-            <Router>
+    <SettingsProvider>
+      <SyncManager>
+        <NotificationProvider>
+          <Router>
+            <Suspense fallback={
+              <div className="flex items-center justify-center min-h-screen bg-gray-50">
+                <Loader type="spinner" size="lg" />
+              </div>
+            }>
               <Routes>
                 {/* Setup & Login - Mutual Exclusivity based on setup status */}
                 <Route
@@ -187,11 +182,11 @@ function App() {
                 {/* Global Catch-all */}
                 <Route path="*" element={<Navigate to={isSetup ? "/" : "/setup"} replace />} />
               </Routes>
-            </Router>
-          </NotificationProvider>
-        </SyncManager>
-      </SettingsProvider>
-    </ToastProvider>
+            </Suspense>
+          </Router>
+        </NotificationProvider>
+      </SyncManager>
+    </SettingsProvider>
   );
 }
 

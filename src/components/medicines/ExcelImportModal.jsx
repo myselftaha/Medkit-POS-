@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { downloadCsv, parseCsvToJson, rowsToCsv } from '../../utils/excelUtils';
 
 const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
     const [file, setFile] = useState(null);
@@ -13,8 +13,8 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
     const handleFileChange = (e) => {
         const selectedFile = e.target.files[0];
         if (selectedFile) {
-            if (!selectedFile.name.endsWith('.xlsx') && !selectedFile.name.endsWith('.xls') && !selectedFile.name.endsWith('.csv')) {
-                alert('Please select an Excel or CSV file (.xlsx, .xls, .csv)');
+            if (!selectedFile.name.toLowerCase().endsWith('.csv')) {
+                alert('Please select a CSV file (.csv)');
                 return;
             }
             setFile(selectedFile);
@@ -66,59 +66,43 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
         setResults(null);
 
         try {
-            const reader = new FileReader();
+            const csvText = await file.text();
+            const jsonData = parseCsvToJson(csvText);
 
-            reader.onload = async (e) => {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                    const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+            if (jsonData.length === 0) {
+                alert('Import file is empty');
+                return;
+            }
 
-                    if (jsonData.length === 0) {
-                        alert('Excel file is empty');
-                        setImporting(false);
-                        return;
+            // Pre-process data to fix dates
+            const processedData = jsonData.map((item) => {
+                const newItem = { ...item };
+
+                // Normalize keys (handle case sensitivity)
+                Object.keys(newItem).forEach((key) => {
+                    const lowerKey = key.toLowerCase();
+                    if (lowerKey.includes('expiry') || lowerKey.includes('date')) {
+                        const dateVal = newItem[key];
+                        const parsed = parseDate(dateVal);
+                        if (parsed) {
+                            newItem[key] = parsed.toISOString();
+                        }
                     }
+                });
+                return newItem;
+            });
 
-                    // Pre-process data to fix dates
-                    const processedData = jsonData.map(item => {
-                        const newItem = { ...item };
-
-                        // Normalize keys (handle case sensitivity)
-                        Object.keys(newItem).forEach(key => {
-                            const lowerKey = key.toLowerCase();
-                            if (lowerKey.includes('expiry') || lowerKey.includes('date')) {
-                                const dateVal = newItem[key];
-                                const parsed = parseDate(dateVal);
-                                if (parsed) {
-                                    newItem[key] = parsed.toISOString();
-                                }
-                            }
-                        });
-                        return newItem;
-                    });
-
-                    // Call the parent import handler with options
-                    const result = await onImport(processedData, {
-                        duplicateStrategy,
-                        createSupplies,
-                        autoLinkSuppliers
-                    });
-                    setResults(result);
-
-                } catch (error) {
-                    console.error('Error parsing Excel:', error);
-                    alert('Error reading Excel file: ' + error.message);
-                } finally {
-                    setImporting(false);
-                }
-            };
-
-            reader.readAsArrayBuffer(file);
+            // Call the parent import handler with options
+            const result = await onImport(processedData, {
+                duplicateStrategy,
+                createSupplies,
+                autoLinkSuppliers
+            });
+            setResults(result);
         } catch (error) {
             console.error('Error importing:', error);
             alert('Import failed: ' + error.message);
+        } finally {
             setImporting(false);
         }
     };
@@ -204,79 +188,36 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
             }
         ];
 
-        const ws = XLSX.utils.json_to_sheet(templateData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Medicines');
-
-        // Add instructions sheet
-        const instructions = [
-            ['Bulk Medicine Import Template - Instructions'],
-            [],
-            ['Column Name', 'Required', 'Data Type', 'Description', 'Example'],
-            ['name', 'Yes', 'Text', 'Medicine name (must be unique)', 'Paracetamol 500mg'],
-            ['genericName', 'No', 'Text', 'Generic/scientific name', 'Paracetamol'],
-            ['description', 'No', 'Text', 'Brief description', 'Pain reliever and fever reducer'],
-            ['category', 'No', 'Text', 'Medicine category', 'Pain Relief'],
-            ['sellingPrice', 'Yes', 'Number', 'Retail price per unit (must be > 0)', '10.50'],
-            ['costPrice', 'No', 'Number', 'Purchase cost per unit', '7.25'],
-            ['mrp', 'No', 'Number', 'Maximum retail price', '12.00'],
-            ['stock', 'No', 'Number', 'Quantity in stock (in packs)', '100'],
-            ['unit', 'No', 'Text', 'Unit of measurement', 'Tablets/Capsules/Bottles'],
-            ['packSize', 'No', 'Number', 'Items per pack', '10'],
-            ['minStock', 'No', 'Number', 'Minimum stock alert level', '20'],
-            ['supplier', 'No', 'Text', 'Supplier name (auto-linked if exists)', 'ABC Pharmaceuticals'],
-            ['batchNumber', 'No', 'Text', 'Batch/Lot number', 'PCM2024001'],
-            ['expiryDate', 'No', 'Date', 'Expiry date (YYYY-MM-DD)', '2025-12-31'],
-            ['formulaCode', 'No', 'Text', 'Formula/SKU code', 'PCM500'],
-            ['shelfLocation', 'No', 'Text', 'Storage location', 'A-1-1'],
-            ['status', 'No', 'Text', 'Medicine status', 'Active/Inactive'],
-            [],
-            ['Important Notes:'],
-            ['1. Required fields MUST be filled (name, sellingPrice)'],
-            ['2. Duplicate medicines: Choose handling in import options (Skip/Update/Merge)'],
-            ['3. Negative prices will be rejected'],
-            ['4. Expired items will show warnings but still import'],
-            ['5. If supplier name matches existing supplier, it will be auto-linked'],
-            ['6. Stock is calculated as: stock × packSize'],
-            ['7. Date format must be YYYY-MM-DD (e.g., 2025-12-31)'],
-            ['8. For best results, fill all columns with accurate data'],
+        const headers = [
+            'name',
+            'genericName',
+            'description',
+            'category',
+            'sellingPrice',
+            'costPrice',
+            'mrp',
+            'stock',
+            'unit',
+            'packSize',
+            'minStock',
+            'supplier',
+            'batchNumber',
+            'expiryDate',
+            'formulaCode',
+            'shelfLocation',
+            'status'
         ];
 
-        const wsInstructions = XLSX.utils.aoa_to_sheet(instructions);
-
-        // Set column widths for instructions
-        wsInstructions['!cols'] = [
-            { wch: 20 },  // Column name
-            { wch: 12 },  // Required
-            { wch: 15 },  // Data Type
-            { wch: 45 },  // Description
-            { wch: 30 }   // Example
+        const csvBody = rowsToCsv(templateData, headers);
+        const comments = [
+            '# Bulk Medicine Import Template',
+            '# Required fields: name, sellingPrice',
+            '# Duplicate handling (skip/update/merge) is controlled inside import options',
+            '# Date format: YYYY-MM-DD',
+            '# Stock is interpreted as number of packs'
         ];
 
-        XLSX.utils.book_append_sheet(wb, wsInstructions, 'Instructions');
-
-        // Set column widths for medicines sheet
-        ws['!cols'] = [
-            { wch: 30 }, // name
-            { wch: 20 }, // genericName
-            { wch: 40 }, // description
-            { wch: 15 }, // category
-            { wch: 12 }, // sellingPrice
-            { wch: 12 }, // costPrice
-            { wch: 10 }, // mrp
-            { wch: 10 }, // stock
-            { wch: 12 }, // unit
-            { wch: 10 }, // packSize
-            { wch: 10 }, // minStock
-            { wch: 20 }, // supplier
-            { wch: 18 }, // batchNumber
-            { wch: 12 }, // expiryDate
-            { wch: 15 }, // formulaCode
-            { wch: 15 }, // shelfLocation
-            { wch: 10 }  // status
-        ];
-
-        XLSX.writeFile(wb, 'medicines_import_template.xlsx');
+        downloadCsv(`${comments.join('\n')}\n${csvBody}`, 'medicines_import_template.csv');
     };
 
     if (!isOpen) return null;
@@ -291,8 +232,8 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
                             <FileSpreadsheet className="text-green-600" size={20} />
                         </div>
                         <div>
-                            <h2 className="text-lg font-bold text-gray-800">Import Medicines from Excel</h2>
-                            <p className="text-sm text-gray-500">Upload an Excel file to add multiple medicines at once</p>
+                            <h2 className="text-lg font-bold text-gray-800">Import Medicines from CSV</h2>
+                            <p className="text-sm text-gray-500">Upload a CSV file to add multiple medicines at once</p>
                         </div>
                     </div>
                     <button
@@ -384,12 +325,12 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
                     {/* File Upload */}
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Select Excel File
+                            Select CSV File
                         </label>
                         <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-green-500 transition-colors">
                             <input
                                 type="file"
-                                accept=".xlsx,.xls,.csv"
+                                accept=".csv"
                                 onChange={handleFileChange}
                                 className="hidden"
                                 id="excel-upload"
@@ -404,10 +345,10 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
                                 ) : (
                                     <>
                                         <div className="font-medium text-gray-700">
-                                            Click to upload Excel or CSV file
+                                            Click to upload CSV file
                                         </div>
                                         <div className="text-sm text-gray-500">
-                                            Supports .xlsx, .xls, and .csv files
+                                            Supports .csv files
                                         </div>
                                     </>
                                 )}

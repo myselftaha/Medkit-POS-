@@ -1,84 +1,93 @@
 # AI Pharmacy POS - Full Stack Management System
 
-AI Pharmacy is a modern, professional Point of Sale (POS) and inventory management system designed specifically for pharmacies. It features a React-based frontend and a Node.js/Express backend, optimized for performance and serverless deployment.
+AI Pharmacy is a production-oriented Point of Sale (POS) and inventory management system for pharmacies. It includes a React frontend and a Node.js/Express backend.
 
-## 🚀 Key Features
+## Key Features
 
-- **Inventory Management**: Track medicines, stock levels, and low stock alerts.
-- **Sales & POS**: Fast, interactive checkout with voucher support and receipt generation.
-- **Dynamic Dashboard**: Real-time business insights, charts, and key performance indicators (KPIs).
-- **Supplier & Customer Portals**: Manage ledgers, payments, and returns for both suppliers and customers.
-- **Smart Notifications**: Low stock and expiry alerts via email and in-app notifications.
-- **WhatsApp Integration**: Send reports and alerts directly via WhatsApp.
-- **Role-Based Access**: Secure authentication with Staff and Admin roles.
-- **Data Backups**: Secure automated and manual backup/restore functionality.
+- Inventory management with low-stock and expiry tracking
+- Sales/POS flow with vouchers and printable receipts
+- Dashboard analytics and reporting
+- Supplier and customer management
+- Email and WhatsApp alerts/reports
+- Role-based authentication and authorization
+- Backup and restore workflows
 
-## 🛠️ Tech Stack
+## Tech Stack
 
-- **Frontend**: React (Vite), Tailwind CSS, Framer Motion, Lucide React, Recharts.
-- **Backend**: Node.js, Express.js.
-- **Database**: MongoDB (Mongoose).
-- **Utilities**: Nodemailer (Email), Baileys (WhatsApp), jsPDF (Receipts), ExcelJS (Bulk Import).
+- Frontend: React (Vite), Tailwind CSS, Framer Motion, Lucide, Recharts
+- Backend: Node.js, Express
+- Database: MongoDB (Mongoose)
+- Utilities: Nodemailer, Baileys, jsPDF, CSV import/export utilities
 
-## 💻 Getting Started
+## Getting Started
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v18 or higher)
-- [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) or a local MongoDB instance.
+- Node.js 18+
+- MongoDB Atlas or local MongoDB
 
 ### Installation
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/myselftaha/AI-Pharmacy.git
-   cd AI-Pharmacy
-   ```
+```bash
+git clone https://github.com/myselftaha/AI-Pharmacy.git
+cd AI-Pharmacy
+npm install
+```
 
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+### Environment Variables
 
-3. **Configure Environment Variables**:
-   Create a `.env` file in the root directory and add the following:
-   ```env
-   MONGO_URI=your_mongodb_connection_string
-   JWT_SECRET=your_secure_jwt_secret
-   PORT=5000
-   
-   # Email Settings
-   SMTP_HOST=smtp.gmail.com
-   SMTP_PORT=587
-   SMTP_USER=your_email@gmail.com
-   SMTP_PASS=your_gmail_app_password
-   OWNER_EMAIL=your_email@gmail.com
-   
-   # Optional
-   STORE_NAME=AI Pharmacy
-   ```
+Create `.env` in project root:
 
-### Running the Application
+```env
+MONGO_URI=your_mongodb_connection_string
+JWT_SECRET=your_secure_jwt_secret
+PORT=5000
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 
-- **Run Backend & Frontend concurrently (Recommended)**:
-  ```bash
-  npm run dev
-  ```
-  *This will start the Vite dev server and the Node.js backend.*
+# Email
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email@gmail.com
+SMTP_PASS=your_gmail_app_password
+OWNER_EMAIL=your_email@gmail.com
 
-## 🚀 Deployment
+# Optional
+STORE_NAME=AI Pharmacy
 
-The project is optimized for **Vercel**. 
+# Keep disabled in production
+ALLOW_SEED_ENDPOINT=false
+ALLOW_TEST_ENDPOINTS=false
+ALLOW_HARD_RESET_ENDPOINT=false
+```
 
-1. Push your code to GitHub.
-2. Connect your repository to Vercel.
-3. Use the **Vite** framework preset.
-4. Add your `.env` variables to Vercel's Environment Variables settings.
-5. Deploy!
+## Run
 
-## 📄 License
+Recommended (frontend + backend together):
 
-This project is private and intended for specified use. Please consult the owner before redistribution.
+```bash
+npm run dev:full
+```
 
----
-Built with ❤️ by [myselftaha](https://github.com/myselftaha)
+Or run separately:
+
+```bash
+# Terminal 1
+npm run server
+
+# Terminal 2
+npm run dev
+```
+
+## Deployment
+
+Optimized for Vercel:
+
+1. Push code to GitHub
+2. Connect repo to Vercel
+3. Use Vite framework preset
+4. Add environment variables in Vercel
+5. Deploy
+
+## License
+
+Private project. Consult the owner before redistribution.

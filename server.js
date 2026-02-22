@@ -17,6 +17,10 @@ dotenv.config();
 // WhatsApp init moved to startServer
 // whatsappClient.initializeWhatsApp();
 
+if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET is required. Refusing to start without a secure JWT secret.');
+}
+
 // Helper to get date query for mongo
 const getDateFilter = (range, customStart, customEnd) => {
     const now = new Date();
@@ -76,24 +80,60 @@ const getDateFilter = (range, customStart, customEnd) => {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
-app.use(cors({
-    origin: "*"
-}));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+const ADMIN_ROLES = ['Admin', 'Super Admin', 'Owner'];
+const MANAGEMENT_ROLES = [...ADMIN_ROLES, 'Store Manager', 'Accountant'];
+const PHARMACY_ROLES = [...MANAGEMENT_ROLES, 'Pharmacist'];
+const SALES_ROLES = [...PHARMACY_ROLES, 'Counter Salesman'];
 
-// Debug Middleware
-app.use(async (req, res, next) => {
-    // Ensure DB is connected for every request (Serverless pattern)
-    if (process.env.VERCEL) {
-        await connectDB();
+const parseAllowedOrigins = () => {
+    const configured = (process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (configured.length > 0) return configured;
+    if (process.env.NODE_ENV !== 'production') {
+        return ['http://localhost:5173', 'http://127.0.0.1:5173'];
     }
-    console.log(`[DEBUG] Request: ${req.method} ${req.url}`);
+    return [];
+};
+
+const allowedOrigins = parseAllowedOrigins();
+
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
     next();
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || 'medkit-pos-secure-secret-2025';
+// Middleware
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        return callback(null, false);
+    },
+    credentials: true
+}));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Debug Middleware
+app.use(async (req, res, next) => {
+    try {
+        // Ensure DB is connected for every request (Serverless pattern)
+        if (process.env.VERCEL) {
+            await connectDB();
+        }
+        if (process.env.NODE_ENV !== 'production' || process.env.DEBUG_REQUESTS === 'true') {
+            console.log(`[DEBUG] Request: ${req.method} ${req.url}`);
+        }
+        next();
+    } catch (err) {
+        console.error('[SERVER] Request middleware failure:', err);
+        res.status(500).json({ message: 'Server initialization error' });
+    }
+});
+
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // User Schema
 const userSchema = new mongoose.Schema({
@@ -145,6 +185,100 @@ const authorizeRoles = (...roles) => {
         next();
     };
 };
+
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const MAX_LOGIN_ATTEMPTS = 10;
+const loginAttemptStore = new Map();
+
+const getLoginAttemptKey = (req, username) => `${req.ip || 'unknown'}::${String(username || '').toLowerCase()}`;
+
+const isLoginRateLimited = (req, username) => {
+    const key = getLoginAttemptKey(req, username);
+    const entry = loginAttemptStore.get(key);
+    if (!entry) return false;
+
+    if (Date.now() > entry.expiresAt) {
+        loginAttemptStore.delete(key);
+        return false;
+    }
+
+    return entry.count >= MAX_LOGIN_ATTEMPTS;
+};
+
+const recordLoginAttempt = (req, username, success) => {
+    const key = getLoginAttemptKey(req, username);
+    if (success) {
+        loginAttemptStore.delete(key);
+        return;
+    }
+
+    const now = Date.now();
+    const existing = loginAttemptStore.get(key);
+    if (!existing || now > existing.expiresAt) {
+        loginAttemptStore.set(key, { count: 1, expiresAt: now + LOGIN_WINDOW_MS });
+        return;
+    }
+    existing.count += 1;
+    loginAttemptStore.set(key, existing);
+};
+
+const PUBLIC_API_ROUTES = [
+    { method: 'GET', pattern: /^\/api\/system\/status$/ },
+    { method: 'POST', pattern: /^\/api\/system\/setup$/ },
+    { method: 'POST', pattern: /^\/api\/users\/login$/ },
+];
+
+const API_ROLE_RULES = [
+    { methods: ['GET', 'POST'], pattern: /^\/api\/system\/backups(?:\/[^/]+)?$/, roles: ADMIN_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/system\/backup$/, roles: ADMIN_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/system\/restore\/[^/]+$/, roles: ADMIN_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/system\/hard-reset$/, roles: ['Super Admin', 'Owner'] },
+    { methods: ['POST'], pattern: /^\/api\/settings$/, roles: ADMIN_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/settings\/restore-defaults$/, roles: ADMIN_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/settings\/inventory$/, roles: PHARMACY_ROLES },
+    { methods: ['PUT'], pattern: /^\/api\/settings\/inventory$/, roles: PHARMACY_ROLES },
+    { methods: ['GET', 'POST'], pattern: /^\/api\/email\/.+$/, roles: ADMIN_ROLES },
+    { methods: ['GET', 'POST'], pattern: /^\/api\/whatsapp\/.+$/, roles: ADMIN_ROLES },
+    { methods: ['DELETE'], pattern: /^\/api\/medicines\/delete-all$/, roles: ADMIN_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/seed$/, roles: ['Super Admin', 'Owner'] },
+    { methods: ['POST'], pattern: /^\/api\/test\/low-stock\/[^/]+$/, roles: ADMIN_ROLES },
+    { methods: ['DELETE'], pattern: /^\/api\/suppliers\/[^/]+$/, roles: MANAGEMENT_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/suppliers\/[^/]+\/clear-history$/, roles: MANAGEMENT_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/suppliers\/[^/]+\/apply-credit$/, roles: MANAGEMENT_ROLES },
+    { methods: ['PUT'], pattern: /^\/api\/payments\/[^/]+\/clear-cheque$/, roles: MANAGEMENT_ROLES },
+    { methods: ['PUT'], pattern: /^\/api\/purchase-orders\/[^/]+\/status$/, roles: MANAGEMENT_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/expiry\/dispose$/, roles: PHARMACY_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/expiry\/send-alert$/, roles: MANAGEMENT_ROLES },
+    { methods: ['GET'], pattern: /^\/api\/dashboard\/stats$/, roles: MANAGEMENT_ROLES },
+    { methods: ['GET'], pattern: /^\/api\/transactions(?:\/stats\/summary|\/[^/]+)?$/, roles: SALES_ROLES },
+    { methods: ['GET'], pattern: /^\/api\/expenses(?:\/[^/]+)?$/, roles: MANAGEMENT_ROLES },
+    { methods: ['GET'], pattern: /^\/api\/staff(?:\/[^/]+(?:\/(advances|payments|audit-logs))?)?$/, roles: MANAGEMENT_ROLES },
+];
+
+const getApiPath = (req) => `${req.baseUrl}${req.path}`;
+const isPublicApiRoute = (req) => {
+    if (req.method === 'OPTIONS') return true;
+    const apiPath = getApiPath(req);
+    return PUBLIC_API_ROUTES.some(route => route.method === req.method && route.pattern.test(apiPath));
+};
+
+app.use('/api', (req, res, next) => {
+    if (isPublicApiRoute(req)) return next();
+    return authenticateToken(req, res, next);
+});
+
+app.use('/api', (req, res, next) => {
+    const apiPath = getApiPath(req);
+    const matchedRule = API_ROLE_RULES.find(rule => rule.methods.includes(req.method) && rule.pattern.test(apiPath));
+    if (!matchedRule) return next();
+    if (!req.user) {
+        return res.status(403).json({ message: 'Forbidden: Missing user context' });
+    }
+    if (!matchedRule.roles.includes(req.user.role)) {
+        return res.status(403).json({ message: `Forbidden: ${req.user.role} cannot access ${apiPath}` });
+    }
+    next();
+});
 
 // MongoDB Connection
 // MongoDB Connection Strategy for Serverless
@@ -223,6 +357,13 @@ async function connectDB() {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const BACKUP_DIR = path.join(__dirname, 'backups');
+const BACKUP_FILE_REGEX = /^[a-zA-Z0-9._-]+\.json$/;
+
+const resolveBackupPath = (filename) => {
+    if (!filename || !BACKUP_FILE_REGEX.test(filename)) return null;
+    const safeName = path.basename(filename);
+    return path.join(BACKUP_DIR, safeName);
+};
 
 // Ensure backup directory exists (Only if NOT Vercel)
 if (!process.env.VERCEL && !fs.existsSync(BACKUP_DIR)) {
@@ -250,7 +391,7 @@ const performBackup = async (trigger = 'manual') => {
             customers: await Customer.find(),
             expenses: await Expense.find(),
             vouchers: await Voucher.find(),
-            users: await User.find().select('-passwordHash') // Exclude passwords
+            users: await User.find() // Include password hashes for full account restore
         };
 
         fs.writeFileSync(filepath, JSON.stringify(data, null, 2));
@@ -300,7 +441,10 @@ app.get('/api/system/backups', authenticateToken, async (req, res) => {
 
 // Route to download backup
 app.get('/api/system/backups/:filename', authenticateToken, async (req, res) => {
-    const filepath = path.join(BACKUP_DIR, req.params.filename);
+    const filepath = resolveBackupPath(req.params.filename);
+    if (!filepath) {
+        return res.status(400).json({ message: 'Invalid backup filename' });
+    }
     if (fs.existsSync(filepath)) {
         res.download(filepath);
     } else {
@@ -318,7 +462,10 @@ const restoreCollection = async (model, data) => {
 };
 
 const performRestore = async (filename) => {
-    const filepath = path.join(BACKUP_DIR, filename);
+    const filepath = resolveBackupPath(filename);
+    if (!filepath) {
+        throw new Error('Invalid backup filename');
+    }
     if (!fs.existsSync(filepath)) {
         throw new Error('Backup file not found');
     }
@@ -341,17 +488,15 @@ const performRestore = async (filename) => {
         await restoreCollection(Expense, backup.expenses);
         await restoreCollection(Voucher, backup.vouchers);
 
-        // Restore Users if present, but be careful not to lock out current user if session persists
-        // For safety, we might skip users or handle them specially. 
-        // For now, let's restore users but ensure we don't break the current admin session immediately (token remains valid).
+        // Restore users only when backup has valid password hashes.
+        // This avoids replacing accounts with unusable credentials.
         if (backup.users && backup.users.length > 0) {
-            await User.deleteMany({});
-            // We need to handle password replacements if they were hashed. 
-            // The backup includes raw documents. If passwordHash is excluded in backup, we can't restore users fully!
-            // Check backup logic: "users: await User.find().select('-passwordHash')" -> Passwords are MISSING.
-            // CRITICAL: We cannot restore users if passwords are missing.
-            // FIX: We will SKIP user restore for this version to prevent lockout.
-            // console.log('Skipping user restore to prevent lockout (passwords missing in backup)');
+            const validUsers = backup.users.filter(u => typeof u.passwordHash === 'string' && u.passwordHash.length > 0);
+            if (validUsers.length > 0) {
+                await restoreCollection(User, validUsers);
+            } else {
+                console.warn('[RESTORE] Skipped user restore because password hashes were missing.');
+            }
         }
 
         return { success: true };
@@ -576,6 +721,53 @@ const transactionSchema = new mongoose.Schema({
 });
 
 const Transaction = mongoose.model('Transaction', transactionSchema);
+
+// Counter Schema - atomic sequences for critical running numbers (e.g., bill numbers)
+const counterSchema = new mongoose.Schema({
+    _id: { type: String, required: true },
+    seq: { type: Number, default: 1000 }
+});
+
+const Counter = mongoose.models.Counter || mongoose.model('Counter', counterSchema);
+
+const getNextBillNumber = async () => {
+    const counter = await Counter.findByIdAndUpdate(
+        'billNumber',
+        [
+            {
+                $set: {
+                    seq: {
+                        $add: [
+                            { $ifNull: ['$seq', 1000] },
+                            1
+                        ]
+                    }
+                }
+            }
+        ],
+        { new: true, upsert: true, updatePipeline: true }
+    );
+    return counter.seq;
+};
+
+const syncBillNumberCounter = async () => {
+    const lastTransaction = await Transaction.findOne({ billNumber: { $exists: true } })
+        .sort({ billNumber: -1 })
+        .select('billNumber');
+
+    const maxBillNumber = Math.max(lastTransaction?.billNumber || 0, 1000);
+    const existingCounter = await Counter.findById('billNumber');
+
+    if (!existingCounter) {
+        await Counter.create({ _id: 'billNumber', seq: maxBillNumber });
+        return;
+    }
+
+    if (existingCounter.seq < maxBillNumber) {
+        existingCounter.seq = maxBillNumber;
+        await existingCounter.save();
+    }
+};
 
 
 // Expense / Cash Withdrawal Schema (POS Drawer Withdrawals)
@@ -1062,16 +1254,22 @@ app.get('/api/cash-drawer/history', authenticateToken, async (req, res) => {
 // AI Low Stock Analysis Endpoint
 app.get('/api/inventory/ai-low-stock', authenticateToken, async (req, res) => {
     try {
-        // 1. Fetch all medicines (or just low stock ones, but velocity might reveal hidden risks)
-        const medicines = await Medicine.find();
+        const inventorySettings = await Settings.findOne({}, { lowStockThreshold: 1 }).lean();
+        const defaultLowStockThreshold = Number(inventorySettings?.lowStockThreshold) || 10;
+
+        // 1. Fetch active inventory medicines
+        const medicines = await Medicine.find({
+            inInventory: true,
+            status: 'Active'
+        });
 
         // 2. Fetch sales history for the last 30 days
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
         const transactions = await Transaction.find({
-            date: { $gte: thirtyDaysAgo },
-            type: 'sale' // Assuming 'sale' type exists
+            createdAt: { $gte: thirtyDaysAgo },
+            type: 'Sale'
         });
 
         // 3. Calculate Sales Velocity (Total Sold per Medicine in 30 days)
@@ -1080,14 +1278,8 @@ app.get('/api/inventory/ai-low-stock', authenticateToken, async (req, res) => {
         transactions.forEach(t => {
             t.items.forEach(item => {
                 // Handle different ID formats (ObjectId vs Int)
-                const medId = item.medicineId.toString();
-                // Normalize quantity to units (assuming transactions store packs or units, keeping simple for now)
-                // If the transaction item has 'saleType' === 'Pack', we should ideally multiply by packSize.
-                // However, without complex aggregation, let's assume item.quantity is the raw sale count.
-                // Depending on data quality, this might need refinement.
-                // For this "Heuristic AI", precise pack/unit conversion per historic transaction might be heavy.
-                // We'll trust item.quantity as a useful proxy for demand.
-
+                const medId = (item.id || item.medicineId)?.toString();
+                if (!medId) return;
                 if (!salesMap[medId]) salesMap[medId] = 0;
                 salesMap[medId] += (item.quantity || 0);
             });
@@ -1108,25 +1300,23 @@ app.get('/api/inventory/ai-low-stock', authenticateToken, async (req, res) => {
             const totalSold = (salesMap[medIdString] || 0) + (altIdString ? (salesMap[altIdString] || 0) : 0);
             const avgDailySales = totalSold / 30;
 
-            // Current Stock in Units (approx)
+            // Compare stock in packs against pack-based thresholds.
             const currentStock = med.stock || 0;
             const packSize = med.packSize || 1;
             const stockInPacks = currentStock / packSize;
+            const medicineThreshold = Number(med.reorderLevel || med.minStock || 0) || 0;
+            const thresholdPacks = Math.max(defaultLowStockThreshold, medicineThreshold);
+            const isLowByThreshold = stockInPacks <= thresholdPacks;
 
-            // If sales velocity is 0, we can't predict much, unless stock is 0.
-            if (avgDailySales === 0 && stockInPacks > 0) return;
+            // If no movement and stock is healthy, skip.
+            if (avgDailySales === 0 && stockInPacks > thresholdPacks) return;
 
             // Predicted Days Remaining
-            // Avoid division by zero
             let daysRemaining = 999;
             if (avgDailySales > 0) {
-                daysRemaining = Math.floor(stockInPacks / avgDailySales); // treating avgDailySales as "Sales Actions" approx to Packs
-                // Refinement: If avgDailySales is in "Items", and Stock is "Units", we need unit alignment.
-                // Assuming Transaction quantity is roughly synonymous with stock decrement units for now.
-                // If Transaction said "1 Pack", and Stock reduced by 10 units.
-                // We should ideally normalize. For this heuristic, let's use a simpler approach:
-                // Velocity = (Total Sold Count) / 30. 
-                // Risk is primarily driven by valid sales.
+                daysRemaining = Math.floor(stockInPacks / avgDailySales);
+            } else if (isLowByThreshold) {
+                daysRemaining = Math.max(Math.floor(stockInPacks), 0);
             }
 
             // Force critical if stock is literally 0
@@ -1155,21 +1345,38 @@ app.get('/api/inventory/ai-low-stock', authenticateToken, async (req, res) => {
                 predictionText = `Moderate sales velocity. Plan restock within 2 weeks.`;
                 confidence = 70;
                 summary.moderateCount++;
+            } else if (isLowByThreshold) {
+                // Even with limited/no sales history, still flag low threshold breaches.
+                if (stockInPacks <= Math.max(1, thresholdPacks * 0.5)) {
+                    risk = 'HIGH';
+                    action = 'ORDER_SOON';
+                    predictionText = `Stock is below minimum threshold (${stockInPacks.toFixed(1)} packs available vs min ${thresholdPacks}). Recent sales are low, but replenishment is recommended.`;
+                    confidence = 68;
+                    summary.highCount++;
+                } else {
+                    risk = 'MODERATE';
+                    action = 'MONITOR';
+                    predictionText = `Stock is near minimum threshold (${stockInPacks.toFixed(1)} packs vs min ${thresholdPacks}). Monitor and reorder soon.`;
+                    confidence = 60;
+                    summary.moderateCount++;
+                }
             }
 
             if (risk !== 'LOW') {
+                const bufferTarget = Math.max(thresholdPacks * 2, thresholdPacks + (avgDailySales * 14));
+                const suggestedOrder = Math.max(Math.ceil(bufferTarget - stockInPacks), 0);
                 predictions.push({
                     id: med._id,
                     name: med.name,
-                    stock: stockInPacks.toFixed(1), // Display in packs/strips often easier
-                    unit: med.unit || 'Packs',
+                    stock: stockInPacks.toFixed(1),
+                    unit: 'packs',
                     daysRemaining,
                     salesVelocity: avgDailySales.toFixed(1),
                     risk,
                     action,
                     prediction: predictionText,
                     confidence,
-                    suggestedOrder: Math.ceil((30 - daysRemaining) * avgDailySales) // Target 30 days
+                    suggestedOrder
                 });
             }
         });
@@ -1253,7 +1460,6 @@ const supplySchema = new mongoose.Schema({
     name: { type: String, required: true },
     batchNumber: { type: String, required: true },
     supplierName: { type: String, required: true },
-    purchaseCost: { type: Number, required: true },
     purchaseInvoiceNumber: { type: String },
     manufacturingDate: Date,
     expiryDate: Date,
@@ -1482,6 +1688,16 @@ app.post('/api/system/setup', async (req, res) => {
         }
 
         const { ownerName, username, password } = req.body;
+        if (!ownerName || !username || !password) {
+            return res.status(400).json({ message: 'ownerName, username, and password are required' });
+        }
+        if (String(password).length < 8) {
+            return res.status(400).json({ message: 'Password must be at least 8 characters long' });
+        }
+        const existingUser = await User.findOne({ username });
+        if (existingUser) {
+            return res.status(400).json({ message: 'Username already exists' });
+        }
 
         // Create Super Admin
         const passwordHash = await bcrypt.hash(password, 10);
@@ -1519,18 +1735,27 @@ app.post('/api/system/setup', async (req, res) => {
 app.post('/api/users/login', async (req, res) => {
     try {
         const { username, password } = req.body;
+        if (isLoginRateLimited(req, username)) {
+            return res.status(429).json({ message: 'Too many failed login attempts. Please try again later.' });
+        }
+
         const user = await User.findOne({ username });
         if (!user || user.status === 'Deactivated') {
+            recordLoginAttempt(req, username, false);
             return res.status(401).json({ message: 'Invalid credentials or account deactivated' });
         }
         const isMatch = await bcrypt.compare(password, user.passwordHash);
-        if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
+        if (!isMatch) {
+            recordLoginAttempt(req, username, false);
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
 
         const token = jwt.sign(
             { id: user._id, username: user.username, role: user.role },
             JWT_SECRET,
             { expiresIn: '7d' }
         );
+        recordLoginAttempt(req, username, true);
         user.lastLogin = new Date();
         await user.save();
 
@@ -1775,8 +2000,14 @@ app.get('/api/supplies/stats', authenticateToken, async (req, res) => {
         // Calculate statistics
         const totalMedicines = medicines.length;
 
-        // Low stock count (stock <= threshold)
-        const lowStockCount = medicines.filter(m => (m.stock || 0) <= lowStockThreshold).length;
+        // Low stock count (packs-based, respecting global threshold override)
+        const lowStockCount = medicines.filter(m => {
+            const packSize = Number(m.packSize) || 1;
+            const stockInPacks = (Number(m.stock) || 0) / packSize;
+            const medicineThreshold = Number(m.reorderLevel || m.minStock || 0) || 0;
+            const threshold = Math.max(lowStockThreshold, medicineThreshold);
+            return stockInPacks <= threshold;
+        }).length;
 
         // Expiring soon count (expiry within alert days)
         const now = new Date();
@@ -2239,8 +2470,12 @@ app.delete('/api/supplies/:id', async (req, res) => {
 
 
 // Single Medicine Fetch
-app.get('/api/medicines/:id', authenticateToken, async (req, res) => {
+app.get('/api/medicines/:id', authenticateToken, async (req, res, next) => {
     try {
+        // Allow dedicated sub-routes like /api/medicines/search and /api/medicines/low-stock.
+        const reservedSubRoutes = new Set(['search', 'low-stock']);
+        if (reservedSubRoutes.has(req.params.id)) return next();
+
         let medicine;
         if (mongoose.Types.ObjectId.isValid(req.params.id)) {
             medicine = await Medicine.findById(req.params.id);
@@ -2261,16 +2496,22 @@ app.get('/api/medicines/:id', authenticateToken, async (req, res) => {
 });
 
 
-// Get Low Stock Medicines (Enriched for Inventory)
-app.get('/api/medicines/low-stock', async (req, res) => {
+// Legacy low-stock endpoint
+app.get('/api/medicines/low-stock/legacy', async (req, res) => {
     try {
         console.log("Fetching Low Stock Medicines...");
         // 1. Fetch all active medicines with populate
         const medicines = await Medicine.find({ status: 'Active', inInventory: true })
             .populate('preferredSupplierId');
 
-        // 2. Filter for Low Stock
-        const lowStockDocs = medicines.filter(m => (m.stock || 0) <= (m.minStock || 10));
+        // 2. Filter for Low Stock (Consistently compare Packs)
+        const lowStockDocs = medicines.filter(m => {
+            const stockUnits = m.stock || 0;
+            const packSize = m.packSize || 1;
+            const stockPacks = stockUnits / packSize;
+            const minStockPacks = m.minStock || 10;
+            return stockPacks <= minStockPacks;
+        });
 
         // 3. Enrich Data
         const enrichedItems = await Promise.all(lowStockDocs.map(async (doc) => {
@@ -2297,7 +2538,7 @@ app.get('/api/medicines/low-stock', async (req, res) => {
             }
 
             // Calculation Logic
-            const dailySales = item.averageDailySales || (Math.random() * 5);
+            const dailySales = Number(item.averageDailySales || 0);
             const stock = item.stock || 0;
             const daysRemaining = dailySales > 0 ? Math.floor(stock / dailySales) : 999;
 
@@ -2338,42 +2579,12 @@ app.get('/api/medicines/low-stock', async (req, res) => {
 app.get('/api/medicines/search', async (req, res) => {
     try {
         const { q, category, page = 1, limit = 50 } = req.query;
-        let baseQuery = { status: 'Active', inInventory: true }; // Only show sellable items
+        const baseQuery = { status: 'Active', inInventory: true }; // Only show sellable items
 
         if (category && category !== 'All') {
             baseQuery.category = category;
         }
-
-        // Strict Filter: Must exist in Supplies
-        const supplyMedicineIds = await Supply.distinct('medicineId');
-
-        // Classify supply IDs
-        const validNumericIds = [];
-        const validObjectIds = [];
-
-        supplyMedicineIds.forEach(sid => {
-            if (!sid) return;
-            const strId = sid.toString();
-            if (!isNaN(strId) && !/^[0-9a-fA-F]{24}$/.test(strId)) {
-                validNumericIds.push(parseInt(strId, 10));
-            } else if (mongoose.Types.ObjectId.isValid(strId)) {
-                validObjectIds.push(new mongoose.Types.ObjectId(strId));
-            }
-        });
-
-        const supplyExistenceFilter = {
-            $or: [
-                { id: { $in: validNumericIds } },
-                { _id: { $in: validObjectIds } }
-            ]
-        };
-
-        let finalQuery = {
-            $and: [
-                baseQuery,
-                supplyExistenceFilter
-            ]
-        };
+        const finalQuery = { ...baseQuery };
 
         if (q) {
             const searchRegex = new RegExp(q, 'i');
@@ -2390,7 +2601,7 @@ app.get('/api/medicines/search', async (req, res) => {
                 searchConditions.push({ boxNumber: searchRegex });
             }
 
-            finalQuery.$and.push({ $or: searchConditions });
+            finalQuery.$or = searchConditions;
         }
 
         const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -2747,13 +2958,21 @@ app.put('/api/medicines/:id', authenticateToken, async (req, res) => {
 // Delete all medicines (must come before :id route)
 app.delete('/api/medicines/delete-all', authenticateToken, async (req, res) => {
     try {
-        // Delete all supplies (inventory batches) - this is what the Medicines page displays
-        const result = await Supply.deleteMany({});
+        // Delete all supplies AND medicines to ensure a clean slate
+        const [suppliesResult, medicinesResult] = await Promise.all([
+            Supply.deleteMany({}),
+            Medicine.deleteMany({})
+        ]);
+
+        console.log(`[DELETE ALL] Removed ${suppliesResult.deletedCount} supplies and ${medicinesResult.deletedCount} medicines`);
+
         res.json({
-            message: 'All medicines deleted successfully',
-            deletedCount: result.deletedCount
+            message: 'All medicines and inventory deleted successfully',
+            deletedCount: medicinesResult.deletedCount,
+            suppliesDeleted: suppliesResult.deletedCount
         });
     } catch (err) {
+        console.error('Error deleting all medicines:', err);
         res.status(500).json({ message: err.message });
     }
 });
@@ -3063,7 +3282,20 @@ app.put('/api/vouchers/:id/use', async (req, res) => {
 // Create transaction (Sale or Return)
 app.post('/api/transactions', authenticateToken, async (req, res) => {
     try {
-        const { type, items, total, customer, voucher } = req.body;
+        const { transactionId, type = 'Sale', items = [], total = 0, customer, voucher } = req.body;
+
+        if (!customer || !customer.name) {
+            return res.status(400).json({ message: 'customer.name is required' });
+        }
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ message: 'items array is required and must not be empty' });
+        }
+
+        const finalTransactionId = transactionId || `TX-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+        const existingTransaction = await Transaction.findOne({ transactionId: finalTransactionId });
+        if (existingTransaction) {
+            return res.status(200).json(existingTransaction);
+        }
 
         // Map items to match Transaction Schema
         const formattedItems = Array.isArray(items) ? items.map(item => ({
@@ -3082,9 +3314,8 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
         const isReturn = type === 'Return';
         const finalTotal = isReturn && total > 0 ? -total : total;
 
-        // Auto-increment billNumber
-        const lastTransaction = await Transaction.findOne({}).sort({ billNumber: -1 });
-        const nextBillNumber = (lastTransaction && lastTransaction.billNumber) ? lastTransaction.billNumber + 1 : 1001;
+        // Atomic bill number generation (prevents duplicates under concurrent requests)
+        const nextBillNumber = await getNextBillNumber();
 
         // Generate formatted invoice number (e.g., INV-2023-1001)
         const currentYear = new Date().getFullYear();
@@ -3099,6 +3330,7 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
 
         const newTransaction = new Transaction({
             ...req.body,
+            transactionId: finalTransactionId,
             items: formattedItems, // Use the formatted items
             invoiceNumber, // Added invoiceNumber
             billNumber: nextBillNumber,
@@ -3568,7 +3800,6 @@ app.get('/api/suppliers/:id', async (req, res) => {
                 cashPayments,
                 totalReturns,
                 balance,
-                balance,
                 supplierCredit,
                 storedCredit: supplier.creditBalance || 0, // Explicitly stored credit
                 totalSKUs,
@@ -3848,8 +4079,8 @@ app.put('/api/suppliers/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Delete Supplier
-app.delete('/api/suppliers/:id', async (req, res) => {
+// Legacy supplier deletion endpoint
+app.delete('/api/suppliers/:id/legacy-delete', authenticateToken, async (req, res) => {
     try {
         const supplier = await Supplier.findById(req.params.id);
         if (!supplier) return res.status(404).json({ message: 'Supplier not found' });
@@ -3888,8 +4119,8 @@ app.get('/api/purchase-orders', authenticateToken, async (req, res) => {
     }
 });
 
-// Get Purchase Orders for a specific supplier
-app.get('/api/purchase-orders/supplier/:id', async (req, res) => {
+// Legacy supplier purchase-order endpoint
+app.get('/api/purchase-orders/supplier/:id/legacy', authenticateToken, async (req, res) => {
     try {
         const orders = await PurchaseOrder.find({ distributorId: req.params.id }).sort({ createdAt: -1 });
         res.json(orders);
@@ -4606,7 +4837,7 @@ app.get('/api/transactions/:id', async (req, res) => {
 });
 
 // Create new transaction (with idempotency for offline sync)
-app.post('/api/transactions', authenticateToken, async (req, res) => {
+app.post('/api/transactions/sync', authenticateToken, async (req, res) => {
     try {
         const {
             transactionId,
@@ -4644,9 +4875,8 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
             return res.status(200).json(existingTransaction); // Return existing, don't create duplicate
         }
 
-        // Generate unique bill number
-        const lastTransaction = await Transaction.findOne().sort({ billNumber: -1 });
-        const nextBillNumber = lastTransaction && lastTransaction.billNumber ? lastTransaction.billNumber + 1 : 1001;
+        // Atomic bill number generation (prevents duplicates under concurrent requests)
+        const nextBillNumber = await getNextBillNumber();
 
         // Generate invoice number
         const invoiceNumber = `INV-${new Date().getFullYear()}-${String(nextBillNumber).padStart(5, '0')}`;
@@ -5474,8 +5704,8 @@ app.get('/api/staff/:id/audit-logs', async (req, res) => {
     }
 });
 
-// Add expense
-app.post('/api/expenses', authenticateToken, async (req, res) => {
+// Legacy add expense endpoint retained for backward compatibility
+app.post('/api/expenses/legacy', authenticateToken, async (req, res) => {
     try {
         const newExpense = new Expense(req.body);
         const savedExpense = await newExpense.save();
@@ -5517,7 +5747,10 @@ app.delete('/api/expenses/:id', authenticateToken, async (req, res) => {
 
 
 // Seed data
-app.post('/api/seed', async (req, res) => {
+app.post('/api/seed', authenticateToken, async (req, res) => {
+    if (process.env.ALLOW_SEED_ENDPOINT !== 'true') {
+        return res.status(403).json({ message: 'Seed endpoint disabled. Set ALLOW_SEED_ENDPOINT=true for controlled use.' });
+    }
     try {
         await Medicine.deleteMany({});
         await Customer.deleteMany({});
@@ -5642,6 +5875,8 @@ app.get('/api/dashboard/stats', async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
         let dateQuery = {};
+        const settings = await Settings.findOne({}, { lowStockThreshold: 1 }).lean();
+        const globalLowStockThreshold = Number(settings?.lowStockThreshold) || 10;
 
         if (startDate || endDate) {
             dateQuery.createdAt = {};
@@ -5700,7 +5935,34 @@ app.get('/api/dashboard/stats', async (req, res) => {
             // Low Stock Count
             Medicine.countDocuments({
                 inInventory: true,
-                $expr: { $lte: ['$stock', { $ifNull: ['$minStock', 10] }] }
+                status: 'Active',
+                $expr: {
+                    $lte: [
+                        {
+                            $divide: [
+                                '$stock',
+                                {
+                                    $cond: [
+                                        { $gt: [{ $ifNull: ['$packSize', 1] }, 0] },
+                                        { $ifNull: ['$packSize', 1] },
+                                        1
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            $max: [
+                                globalLowStockThreshold,
+                                {
+                                    $ifNull: [
+                                        '$reorderLevel',
+                                        { $ifNull: ['$minStock', 10] }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
             })
         ]);
 
@@ -6099,10 +6361,14 @@ async function updateMedicineStockFromBatches(medicineId) {
 const checkLowStock = async (medicine) => {
     try {
         const settings = await Settings.findOne() || {};
-        const minStock = medicine.minStock || settings.lowStockThreshold || 10;
-        console.log(`[Low Stock Check] ${medicine.name}: Stock=${medicine.stock}, Min=${minStock}`);
+        const globalThreshold = Number(settings.lowStockThreshold) || 10;
+        const medicineThreshold = Number(medicine.reorderLevel || medicine.minStock || 0) || 0;
+        const thresholdPacks = Math.max(globalThreshold, medicineThreshold);
+        const packSize = Number(medicine.packSize) || 1;
+        const stockInPacks = (Number(medicine.stock) || 0) / packSize;
+        console.log(`[Low Stock Check] ${medicine.name}: Stock=${stockInPacks} packs, Min=${thresholdPacks} packs`);
 
-        if (medicine.stock <= minStock) {
+        if (stockInPacks <= thresholdPacks) {
             // Check if unread notification already exists to prevent spam
             // We use relatedId AND isRead: false to avoid duplicate alerts for the same low stock event
             const existingNotif = await Notification.findOne({
@@ -6115,7 +6381,7 @@ const checkLowStock = async (medicine) => {
                 const notification = new Notification({
                     type: 'LOW_STOCK',
                     title: 'Low Stock Alert',
-                    message: `Stock for ${medicine.name} is low (${medicine.stock} units). Min: ${minStock}`,
+                    message: `Stock for ${medicine.name} is low (${stockInPacks.toFixed(1)} packs). Min: ${thresholdPacks} packs`,
                     priority: 'high',
                     relatedId: medicine._id,
                     onModel: 'Medicine',
@@ -6136,7 +6402,10 @@ const checkLowStock = async (medicine) => {
 };
 
 // Test Route for Debugging
-app.post('/api/test/low-stock/:id', async (req, res) => {
+app.post('/api/test/low-stock/:id', authenticateToken, async (req, res) => {
+    if (process.env.ALLOW_TEST_ENDPOINTS !== 'true') {
+        return res.status(403).json({ message: 'Test endpoint disabled. Set ALLOW_TEST_ENDPOINTS=true for controlled use.' });
+    }
     try {
         const medicine = await Medicine.findById(req.params.id);
         if (!medicine) return res.status(404).json({ message: 'Medicine not found' });
@@ -6273,6 +6542,9 @@ app.get('/api/medicines/forecast/:id', async (req, res) => {
 // Get enriched low stock items
 app.get('/api/medicines/low-stock', async (req, res) => {
     try {
+        const inventorySettings = await Settings.findOne({}, { lowStockThreshold: 1 }).lean();
+        const defaultLowStockThreshold = Number(inventorySettings?.lowStockThreshold) || 10;
+
         const medicines = await Medicine.find({
             inInventory: true,
             status: 'Active'
@@ -6280,20 +6552,37 @@ app.get('/api/medicines/low-stock', async (req, res) => {
 
         // Filter for low stock items
         const lowStockItems = medicines.filter(med => {
-            const stock = parseInt(med.stock || 0);
-            const threshold = med.reorderLevel || med.minStock || 10;
-            return stock <= threshold;
+            const stockUnits = Number(med.stock) || 0;
+            const packSize = Number(med.packSize) || 1;
+            const stockInPacks = stockUnits / packSize;
+            const medicineThreshold = Number(med.reorderLevel || med.minStock || 0) || 0;
+            const thresholdPacks = Math.max(defaultLowStockThreshold, medicineThreshold);
+            return stockInPacks <= thresholdPacks;
         });
 
         // Enrich with calculations
         const enrichedItems = lowStockItems.map(med => {
-            const suggestion = calculateReorderSuggestion(med);
-            const forecast7 = calculateStockForecast(med.stock, med.averageDailySales, 7);
-            const forecast15 = calculateStockForecast(med.stock, med.averageDailySales, 15);
-            const forecast30 = calculateStockForecast(med.stock, med.averageDailySales, 30);
+            const stockUnits = Number(med.stock) || 0;
+            const packSize = Number(med.packSize) || 1;
+            const stockInPacks = stockUnits / packSize;
+            const medicineThreshold = Number(med.reorderLevel || med.minStock || 0) || 0;
+            const thresholdPacks = Math.max(defaultLowStockThreshold, medicineThreshold);
+            const dailySales = Number(med.averageDailySales) || 0;
+
+            const suggestion = calculateReorderSuggestion({
+                ...med.toObject(),
+                stock: stockInPacks,
+                minStock: thresholdPacks,
+                reorderLevel: thresholdPacks
+            });
+            const forecast7 = calculateStockForecast(stockInPacks, dailySales, 7);
+            const forecast15 = calculateStockForecast(stockInPacks, dailySales, 15);
+            const forecast30 = calculateStockForecast(stockInPacks, dailySales, 30);
 
             return {
                 ...med.toObject(),
+                stockInPacks: Number(stockInPacks.toFixed(2)),
+                lowStockThreshold: thresholdPacks,
                 reorderSuggestion: suggestion,
                 forecasts: {
                     days7: forecast7,
@@ -6942,44 +7231,47 @@ app.post('/api/expiry/dispose', async (req, res) => {
 });
 
 // Get Expiry Report Summary (for WhatsApp notifications)
+const buildExpirySummary = async () => {
+    const now = new Date();
+    const settings = await Settings.findOne() || {};
+    const criticalDays = settings.expiryAlertDays || 30;
+    const thirtyDaysFromNow = new Date(now.getTime() + criticalDays * 24 * 60 * 60 * 1000);
+
+    const expiredCount = await Medicine.countDocuments({
+        status: 'Active',
+        expiryDate: { $lt: now },
+        stock: { $gt: 0 }
+    });
+
+    const criticalCount = await Medicine.countDocuments({
+        status: 'Active',
+        expiryDate: { $gte: now, $lte: thirtyDaysFromNow },
+        stock: { $gt: 0 }
+    });
+
+    // Get top 5 most urgent
+    const topUrgent = await Medicine.find({
+        status: 'Active',
+        expiryDate: { $lte: thirtyDaysFromNow },
+        stock: { $gt: 0 }
+    }).sort({ expiryDate: 1 }).limit(5);
+
+    return {
+        expiredCount,
+        criticalCount,
+        totalAlerts: expiredCount + criticalCount,
+        topUrgent: topUrgent.map(med => ({
+            name: med.name,
+            expiryDate: med.expiryDate,
+            stock: med.stock,
+            daysRemaining: Math.ceil((new Date(med.expiryDate) - now) / (1000 * 60 * 60 * 24))
+        }))
+    };
+};
+
 app.get('/api/expiry/summary', async (req, res) => {
     try {
-        const now = new Date();
-        const settings = await Settings.findOne() || {};
-        const criticalDays = settings.expiryAlertDays || 30;
-        const thirtyDaysFromNow = new Date(now.getTime() + criticalDays * 24 * 60 * 60 * 1000);
-
-        const expiredCount = await Medicine.countDocuments({
-            status: 'Active',
-            expiryDate: { $lt: now },
-            stock: { $gt: 0 }
-        });
-
-        const criticalCount = await Medicine.countDocuments({
-            status: 'Active',
-            expiryDate: { $gte: now, $lte: thirtyDaysFromNow },
-            stock: { $gt: 0 }
-        });
-
-        // Get top 5 most urgent
-        const topUrgent = await Medicine.find({
-            status: 'Active',
-            expiryDate: { $lte: thirtyDaysFromNow },
-            stock: { $gt: 0 }
-        }).sort({ expiryDate: 1 }).limit(5);
-
-        const summary = {
-            expiredCount,
-            criticalCount,
-            totalAlerts: expiredCount + criticalCount,
-            topUrgent: topUrgent.map(med => ({
-                name: med.name,
-                expiryDate: med.expiryDate,
-                stock: med.stock,
-                daysRemaining: Math.ceil((new Date(med.expiryDate) - now) / (1000 * 60 * 60 * 24))
-            }))
-        };
-
+        const summary = await buildExpirySummary();
         res.json(summary);
     } catch (err) {
         console.error('Error fetching expiry summary:', err);
@@ -7008,18 +7300,26 @@ const predictExpiryRisk = async (medicine) => {
             {
                 $match: {
                     type: 'Sale',
-                    createdAt: { $gte: thirtyDaysAgo },
-                    'items.medicineName': medicine.name
+                    createdAt: { $gte: thirtyDaysAgo }
                 }
             },
             { $unwind: '$items' },
             {
-                $match: { 'items.medicineName': medicine.name }
+                $match: {
+                    $or: [
+                        { 'items.name': medicine.name },
+                        { 'items.medicineName': medicine.name }
+                    ]
+                }
             },
             {
                 $group: {
                     _id: null,
-                    totalSold: { $sum: '$items.billedQuantity' }
+                    totalSold: {
+                        $sum: {
+                            $ifNull: ['$items.quantity', { $ifNull: ['$items.billedQuantity', 0] }]
+                        }
+                    }
                 }
             }
         ]);
@@ -7145,10 +7445,9 @@ const sendWhatsAppAlert = async (message) => {
 };
 
 // Manual trigger for WhatsApp alert
-app.post('/api/expiry/send-alert', async (req, res) => {
+app.post('/api/expiry/send-alert', authenticateToken, async (req, res) => {
     try {
-        const summary = await fetch(`http://localhost:${PORT}/api/expiry/summary`);
-        const data = await summary.json();
+        const data = await buildExpirySummary();
 
         const message = `🏥 *Pharmacy Expiry Alert*
 
@@ -7177,8 +7476,7 @@ const startAutomatedExpiryChecks = () => {
         try {
             console.log('[Automated Expiry Check] Running daily expiry scan...');
 
-            const response = await fetch(`http://localhost:${PORT}/api/expiry/summary`);
-            const data = await response.json();
+            const data = await buildExpirySummary();
 
             if (data.totalAlerts > 0) {
                 const message = `🏥 *Daily Expiry Report - ${new Date().toLocaleDateString()}*
@@ -7239,6 +7537,7 @@ const migrateBillNumbers = async () => {
             }
             console.log(`[Migration] Successfully added billNumbers to ${count} transactions.`);
         }
+        await syncBillNumberCounter();
     } catch (err) {
         console.error('[Migration] Error backfilling billNumbers:', err);
     }
@@ -7246,8 +7545,11 @@ const migrateBillNumbers = async () => {
 
 // --- SYSTEM MAINTENANCE ROUTES ---
 
-// HARD RESET: Clears EVERYTHING including Users (For fresh testing)
-app.post('/api/system/hard-reset', async (req, res) => {
+// HARD RESET: Clears EVERYTHING including Users (for controlled testing only)
+app.post('/api/system/hard-reset', authenticateToken, authorizeRoles('Super Admin', 'Owner'), async (req, res) => {
+    if (process.env.ALLOW_HARD_RESET_ENDPOINT !== 'true') {
+        return res.status(403).json({ message: 'Hard reset endpoint disabled. Set ALLOW_HARD_RESET_ENDPOINT=true for controlled use.' });
+    }
     try {
         console.warn('⚠️ HARD RESET TRIGGERED: Wiping entire database...');
 
@@ -7271,10 +7573,10 @@ app.post('/api/system/hard-reset', async (req, res) => {
         res.status(500).json({ message: 'Reset failed', error: err.message });
     }
 });
-// --- NOTIFICATION ROUTES ---
+// --- LEGACY NOTIFICATION ROUTES (retained for compatibility only) ---
 
 // Get Notifications (Paginated)
-app.get('/api/notifications', authenticateToken, async (req, res) => {
+app.get('/api/notifications/legacy', authenticateToken, async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
@@ -7301,7 +7603,7 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
 });
 
 // Get Unread Count (Lightweight)
-app.get('/api/notifications/unread-count', authenticateToken, async (req, res) => {
+app.get('/api/notifications/legacy/unread-count', authenticateToken, async (req, res) => {
     try {
         const count = await Notification.countDocuments({ isRead: false });
         res.json({ count });
@@ -7311,7 +7613,7 @@ app.get('/api/notifications/unread-count', authenticateToken, async (req, res) =
 });
 
 // Mark single as read
-app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
+app.put('/api/notifications/legacy/:id/read', authenticateToken, async (req, res) => {
     try {
         await Notification.findByIdAndUpdate(req.params.id, { isRead: true });
         res.json({ success: true });
@@ -7321,7 +7623,7 @@ app.put('/api/notifications/:id/read', authenticateToken, async (req, res) => {
 });
 
 // Mark all as read
-app.put('/api/notifications/mark-all-read', authenticateToken, async (req, res) => {
+app.put('/api/notifications/legacy/mark-all-read', authenticateToken, async (req, res) => {
     try {
         await Notification.updateMany({ isRead: false }, { isRead: true });
         res.json({ success: true });
@@ -7331,7 +7633,7 @@ app.put('/api/notifications/mark-all-read', authenticateToken, async (req, res) 
 });
 
 // Create Notification (Internal/Test)
-app.post('/api/notifications', authenticateToken, async (req, res) => {
+app.post('/api/notifications/legacy', authenticateToken, async (req, res) => {
     try {
         const { type, title, message, priority } = req.body;
         const notification = new Notification({
@@ -7343,7 +7645,7 @@ app.post('/api/notifications', authenticateToken, async (req, res) => {
         res.status(500).json({ message: 'Error creating notification' });
     }
 });
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+if (process.env.ENABLE_LEGACY_STARTUP === 'true' && (process.env.NODE_ENV !== 'production' || !process.env.VERCEL)) {
     // Basic local connection for standalone run
     connectDB()
         .then(async () => {
@@ -7364,10 +7666,23 @@ if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
 
 // --- EMAIL NOTIFICATION ROUTES ---
 
+const withEmailOverride = (settings, customEmail) => {
+    const base = settings?.toObject ? settings.toObject() : { ...(settings || {}) };
+    if (customEmail && typeof customEmail === 'string') {
+        const normalized = customEmail.trim();
+        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+            base.ownerEmail = normalized;
+        }
+    }
+    return base;
+};
+
 // Test email configuration
 app.post('/api/email/test', authenticateToken, async (req, res) => {
     try {
-        const result = await emailService.sendTestEmail();
+        const settings = await Settings.findOne();
+        const effectiveSettings = withEmailOverride(settings, req.body?.customEmail);
+        const result = await emailService.sendTestEmail(effectiveSettings);
         if (result.success) {
             res.json({ message: 'Test email sent successfully! Check your inbox.', success: true });
         } else {
@@ -7387,6 +7702,7 @@ app.post('/api/email/test', authenticateToken, async (req, res) => {
 app.post('/api/email/send-low-stock-alert', authenticateToken, async (req, res) => {
     try {
         const settings = await Settings.findOne();
+        const effectiveSettings = withEmailOverride(settings, req.body?.customEmail);
 
         // Find all low stock medicines
         const lowStockMedicines = await Medicine.find({
@@ -7398,7 +7714,7 @@ app.post('/api/email/send-low-stock-alert', authenticateToken, async (req, res) 
             return res.json({ message: 'No low stock items found', success: true, count: 0 });
         }
 
-        const result = await emailService.sendLowStockEmail(lowStockMedicines, settings);
+        const result = await emailService.sendLowStockEmail(lowStockMedicines, effectiveSettings);
 
         if (result.success) {
             res.json({
@@ -7425,6 +7741,7 @@ app.post('/api/email/send-low-stock-alert', authenticateToken, async (req, res) 
 app.post('/api/email/send-expiry-alert', authenticateToken, async (req, res) => {
     try {
         const settings = await Settings.findOne();
+        const effectiveSettings = withEmailOverride(settings, req.body?.customEmail);
         const expiryAlertDays = settings?.expiryAlertDays || 30;
 
         // Find medicines expiring soon
@@ -7440,7 +7757,7 @@ app.post('/api/email/send-expiry-alert', authenticateToken, async (req, res) => 
             return res.json({ message: 'No expiring medicines found', success: true, count: 0 });
         }
 
-        const result = await emailService.sendExpiryAlertEmail(expiringMedicines, settings);
+        const result = await emailService.sendExpiryAlertEmail(expiringMedicines, effectiveSettings);
 
         if (result.success) {
             res.json({
@@ -7467,6 +7784,7 @@ app.post('/api/email/send-expiry-alert', authenticateToken, async (req, res) => 
 app.post('/api/email/send-daily-summary', authenticateToken, async (req, res) => {
     try {
         const settings = await Settings.findOne();
+        const effectiveSettings = withEmailOverride(settings, req.body?.customEmail);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const tomorrow = new Date(today);
@@ -7513,7 +7831,7 @@ app.post('/api/email/send-daily-summary', authenticateToken, async (req, res) =>
         };
 
         // Pass force: true to bypass settings check if implemented, or we will remove the check in service
-        const result = await emailService.sendDailySalesSummary(summary, settings, true); // Added true for force send if we add that param
+        const result = await emailService.sendDailySalesSummary(summary, effectiveSettings, true); // Added true for force send if we add that param
 
         if (result.success) {
             res.json({ message: 'Daily sales summary email sent successfully!', success: true });
@@ -7532,6 +7850,7 @@ app.post('/api/email/send-daily-summary', authenticateToken, async (req, res) =>
 app.post('/api/email/send-inventory-report', authenticateToken, async (req, res) => {
     try {
         const settings = await Settings.findOne();
+        const effectiveSettings = withEmailOverride(settings, req.body?.customEmail);
         const inventory = await Medicine.find({ status: 'Active' })
             .select('name stock unit costPrice price sellingPrice status') // Updated to select correct price fields
             .sort({ name: 1 });
@@ -7540,7 +7859,7 @@ app.post('/api/email/send-inventory-report', authenticateToken, async (req, res)
             return res.json({ message: 'No inventory items found', success: true, count: 0 });
         }
 
-        const result = await emailService.sendInventoryReportEmail(inventory, settings);
+        const result = await emailService.sendInventoryReportEmail(inventory, effectiveSettings);
 
         if (result.success) {
             res.json({ message: `Inventory report sent for ${result.count} items`, success: true, count: result.count });
@@ -7559,6 +7878,7 @@ app.post('/api/email/send-inventory-report', authenticateToken, async (req, res)
 app.post('/api/email/send-returns-report', authenticateToken, async (req, res) => {
     try {
         const settings = await Settings.findOne();
+        const effectiveSettings = withEmailOverride(settings, req.body?.customEmail);
         const returns = await Transaction.find({ type: 'Return' })
             .sort({ createdAt: -1 })
             .limit(100)
@@ -7568,7 +7888,7 @@ app.post('/api/email/send-returns-report', authenticateToken, async (req, res) =
             return res.json({ message: 'No returns found', success: true, count: 0 });
         }
 
-        const result = await emailService.sendReturnsReportEmail(returns, settings);
+        const result = await emailService.sendReturnsReportEmail(returns, effectiveSettings);
 
         if (result.success) {
             res.json({ message: `Returns report sent for ${result.count} returns`, success: true, count: result.count });
@@ -7587,6 +7907,7 @@ app.post('/api/email/send-returns-report', authenticateToken, async (req, res) =
 app.post('/api/email/send-transaction-history', authenticateToken, async (req, res) => {
     try {
         const settings = await Settings.findOne();
+        const effectiveSettings = withEmailOverride(settings, req.body?.customEmail);
         const last7Days = new Date();
         last7Days.setDate(last7Days.getDate() - 7);
 
@@ -7602,7 +7923,7 @@ app.post('/api/email/send-transaction-history', authenticateToken, async (req, r
             return res.json({ message: 'No transactions found', success: true, count: 0 });
         }
 
-        const result = await emailService.sendTransactionHistoryEmail(transactions, settings, 'Last 7 Days');
+        const result = await emailService.sendTransactionHistoryEmail(transactions, effectiveSettings, 'Last 7 Days');
 
         if (result.success) {
             res.json({ message: `Transaction history sent for ${result.count} transactions`, success: true, count: result.count });
@@ -7775,24 +8096,12 @@ if (!process.env.VERCEL) {
             console.log('Database connected.');
 
             // Initialize Services that need DB
+            await migrateBillNumbers();
+            startAutomatedExpiryChecks();
             await whatsappClient.initializeWhatsApp();
-
-            // Ensure app listens if not imported
-            const args = process.argv.slice(2);
-            // We assume app.listen is MISSING based on previous analysis, 
-            // OR we add it safely. 
-            // Since node server.js was running, there MUST be a listener. 
-            // But we didn't find it. 
-            // Let's explicitly add one here just to be safe for our new logic?
-            // "Error: listen EADDRINUSE" risk.
-            // Let's assume the user's previous success meant there IS a listener.
-            // But we moved init logic here.
 
             // To be safe, we just log.
             console.log('Services initialized.');
-
-            // Check if we need to start listening manually (if file didn't have it)
-            // We will try to listen on PORT if not already listening? Impossible to check easily.
 
             app.listen(PORT, () => {
                 console.log(`Server running on port ${PORT}`);
