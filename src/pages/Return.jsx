@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Search, User, Trash2, RotateCcw, FileText,
     Calendar, AlertCircle, Printer, X, Banknote, CreditCard,
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import API_URL from '../config/api';
+import { useSettings } from '../context/SettingsContext';
 
 const Return = () => {
     // --- State ---
@@ -25,11 +26,13 @@ const Return = () => {
     const [supplies, setSupplies] = useState([]);
 
     const { showToast } = useToast();
+    const { settings, formatPrice } = useSettings();
 
     const [refundMethod, setRefundMethod] = useState('Cash');
     const [returnNotes, setReturnNotes] = useState('');
     const [showReceiptModal, setShowReceiptModal] = useState(false);
     const [returnReceipt, setReturnReceipt] = useState(null);
+    const [isProcessingReturn, setIsProcessingReturn] = useState(false);
     const [dateFilter, setDateFilter] = useState('Today');
     const [customDates, setCustomDates] = useState({ start: '', end: '' });
     const [loading, setLoading] = useState(false);
@@ -62,9 +65,13 @@ const Return = () => {
             const custData = await custRes.json();
             const suppliesData = await suppliesRes.json();
 
-            setMedicines((Array.isArray(medsData) ? medsData : []).filter(med => med.status === 'Active' && med.inInventory));
-            setCustomers(Array.isArray(custData) ? custData : []);
-            setSupplies(Array.isArray(suppliesData) ? suppliesData : []);
+            const medicineList = Array.isArray(medsData?.data) ? medsData.data : (Array.isArray(medsData) ? medsData : []);
+            const customerList = Array.isArray(custData?.data) ? custData.data : (Array.isArray(custData) ? custData : []);
+            const supplyList = Array.isArray(suppliesData?.data) ? suppliesData.data : (Array.isArray(suppliesData) ? suppliesData : []);
+
+            setMedicines(medicineList.filter(med => med.status === 'Active' && med.inInventory));
+            setCustomers(customerList);
+            setSupplies(supplyList);
         } catch (error) {
             console.error('Error fetching data:', error);
             showToast('Failed to load system data', 'error');
@@ -173,20 +180,29 @@ const Return = () => {
             return;
         }
 
+        const packSize = Number(item.packSize) > 0 ? Number(item.packSize) : 1;
+        const saleType = (item.saleType === 'Pack' || item.unit === 'pack')
+            ? 'Pack'
+            : (fromInvoice ? 'Single' : (packSize > 1 ? 'Pack' : 'Single'));
+        const itemPrice = Number(item.price ?? item.unitPrice ?? 0);
+        const soldQuantity = Number(item.quantity || item.billedQuantity || 0);
+
         const newItem = {
             id: item._id || item.id,
             name: item.name,
-            price: item.price,
-            originalQty: fromInvoice ? item.quantity : 999, // Max for manual
+            price: itemPrice,
+            saleType,
+            packSize,
+            originalQty: fromInvoice ? Math.max(1, soldQuantity) : 999, // Max for manual
             returnQty: 1,
             returnReason: returnReasons[0],
             restock: true,
-            batch: '',
+            batch: item.batchId || '',
             invoiceMetadata: fromInvoice ? {
                 id: selectedInvoice.invoiceNumber || selectedInvoice.transactionId,
                 date: item.createdAt || selectedInvoice.createdAt || selectedInvoice.date,
-                soldQty: item.quantity,
-                soldPrice: item.price
+                soldQty: soldQuantity,
+                soldPrice: itemPrice
             } : null
         };
 
@@ -264,7 +280,8 @@ const Return = () => {
     };
 
     const handleProcessReturn = async () => {
-        if (returnCart.length === 0) return;
+        if (returnCart.length === 0 || isProcessingReturn) return;
+        setIsProcessingReturn(true);
 
         try {
             const totalRefund = calculateTotalRefund();
@@ -285,10 +302,14 @@ const Return = () => {
                 },
                 items: returnCart.map(item => ({
                     id: item.id,
+                    medicineId: item.id,
                     name: item.name,
                     price: item.price,
                     quantity: item.returnQty,
                     subtotal: item.price * item.returnQty,
+                    saleType: item.saleType || 'Single',
+                    packSize: item.packSize || 1,
+                    unit: (item.saleType || 'Single') === 'Pack' ? 'pack' : 'unit',
                     returnReason: item.returnReason,
                     restock: item.restock,
                     batchId: item.batch
@@ -337,6 +358,8 @@ const Return = () => {
         } catch (error) {
             console.error('Return Error:', error);
             showToast('Error processing return', 'error');
+        } finally {
+            setIsProcessingReturn(false);
         }
     };
 
@@ -438,7 +461,7 @@ const Return = () => {
                             className="w-full pl-3 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs appearance-none focus:outline-none font-medium"
                         >
                             <option value="">Select Batch (Optional)...</option>
-                            {supplies.filter(s => s.medicineId === item.id).map(s => (
+                            {supplies.filter(s => String(s.medicineId) === String(item.id)).map(s => (
                                 <option key={s._id} value={s._id}>{s.batchNumber} (Exp: {new Date(s.expiryDate).toLocaleDateString()})</option>
                             ))}
                         </select>
@@ -589,7 +612,9 @@ const Return = () => {
                                                                     <span className="text-xs font-bold text-gray-800 line-clamp-1">{item.name}</span>
                                                                     <Plus size={12} className="text-blue-500" />
                                                                 </div>
-                                                                <span className="text-[10px] text-gray-500 font-medium">{item.quantity} units available</span>
+                                                                <span className="text-[10px] text-gray-500 font-medium">
+                                                                    {item.quantity} {(item.saleType === 'Pack' || item.unit === 'pack') ? 'packs' : 'units'} available
+                                                                </span>
                                                             </button>
                                                         ))}
                                                 </div>
@@ -705,11 +730,11 @@ const Return = () => {
 
                                 <button
                                     onClick={handleProcessReturn}
-                                    disabled={returnCart.length === 0}
+                                    disabled={returnCart.length === 0 || isProcessingReturn}
                                     className="w-full py-4 bg-red-600 text-white rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg shadow-red-500/10 hover:bg-red-700 disabled:opacity-50 disabled:bg-gray-400 transition-all flex items-center justify-center gap-2 active:transform active:scale-[0.98]"
                                 >
                                     <RotateCcw size={18} />
-                                    Confirm Return
+                                    {isProcessingReturn ? 'Processing...' : 'Confirm Return'}
                                 </button>
                             </div>
                         </div>
@@ -736,8 +761,9 @@ const Return = () => {
                             {/* Receipt Content */}
                             <div className="p-6 print:p-0" id="printable-receipt">
                                 <div className="text-center mb-6">
-                                    <h1 className="text-2xl font-bold text-gray-800 mb-1">MedKit POS</h1>
-                                    <p className="text-sm text-gray-500">Pharmacy Management System</p>
+                                    <h1 className="text-2xl font-bold text-gray-800 mb-1">{settings?.storeName || 'MedKit POS'}</h1>
+                                    <p className="text-sm text-gray-500">{settings?.storeAddress || 'Pharmacy Management System'}</p>
+                                    {settings?.storePhone && <p className="text-xs text-gray-500">Tel: {settings.storePhone}</p>}
                                     <p className="text-xs text-gray-400 mt-2">{new Date(returnReceipt.date).toLocaleString()}</p>
                                     <div className="mt-2">
                                         <p className="text-xl font-bold text-gray-800">Bill #: {returnReceipt.billNumber}</p>
@@ -776,11 +802,11 @@ const Return = () => {
                                 <div className="space-y-2 text-sm mb-6">
                                     <div className="flex justify-between text-gray-600">
                                         <span>Subtotal</span>
-                                        <span>Rs. {returnReceipt.subtotal.toFixed(2)}</span>
+                                        <span>{formatPrice(returnReceipt.subtotal)}</span>
                                     </div>
                                     <div className="flex justify-between font-bold text-lg text-gray-900 pt-2 border-t border-gray-200">
                                         <span>Total Refund</span>
-                                        <span className="text-red-600 text-xl font-bold">Rs. {returnReceipt.total.toFixed(2)}</span>
+                                        <span className="text-red-600 text-xl font-bold">{formatPrice(returnReceipt.total)}</span>
                                     </div>
 
                                     <div className="pt-4 mt-4 border-t border-dashed border-gray-300">

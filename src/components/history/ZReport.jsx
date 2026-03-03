@@ -1,6 +1,8 @@
 import React from 'react';
 
-const ZReport = ({ stats, dateFilter, customDates, user = 'Admin' }) => {
+const ZReport = ({ stats, dateFilter, customDates, user = 'Admin', enabled = false }) => {
+    if (!enabled) return null;
+
     const today = new Date().toLocaleDateString();
     const time = new Date().toLocaleTimeString();
 

@@ -1,10 +1,29 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Printer, CheckCircle, Store } from 'lucide-react';
 import { useSettings } from '../../context/SettingsContext';
 import { QRCodeCanvas } from 'qrcode.react';
 
-const BillModal = ({ isOpen, onClose, items, total, onPrint, customer, discount = 0, transactionId, billNumber, invoiceNumber, paymentMethod, voucher }) => {
+const BillModal = ({
+    isOpen,
+    onClose,
+    items = [],
+    total,
+    subtotal,
+    platformFee = 0,
+    tax = 0,
+    onPrint,
+    customer,
+    discount = 0,
+    transactionId,
+    billNumber,
+    invoiceNumber,
+    paymentMethod,
+    voucher,
+    transactionDate,
+    transactionType = 'Sale'
+}) => {
     const { settings, formatPrice } = useSettings();
+    const [openedAt, setOpenedAt] = useState(() => new Date().toISOString());
     useEffect(() => {
         const handleEsc = (e) => {
             if (e.key === 'Escape') onClose();
@@ -12,21 +31,54 @@ const BillModal = ({ isOpen, onClose, items, total, onPrint, customer, discount 
         if (isOpen) window.addEventListener('keydown', handleEsc);
         return () => window.removeEventListener('keydown', handleEsc);
     }, [isOpen, onClose]);
+    useEffect(() => {
+        if (isOpen) {
+            setOpenedAt(new Date().toISOString());
+        }
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
-    const date = new Date().toLocaleString();
+    const normalizedItems = Array.isArray(items) ? items : [];
+    const computedSubtotal = normalizedItems.reduce((sum, item) => {
+        const qty = Number(item.quantity ?? item.billedQuantity ?? 0);
+        const unitPrice = Number(item.price ?? item.unitPrice ?? 0);
+        const lineSubtotal = Number(item.subtotal ?? item.netItemTotal ?? (qty * unitPrice));
+        return sum + (Number.isFinite(lineSubtotal) ? lineSubtotal : 0);
+    }, 0);
+
+    const parsedSubtotal = Number(subtotal);
+    const subtotalAmount = Number.isFinite(parsedSubtotal) ? parsedSubtotal : computedSubtotal;
+    const platformFeeAmount = Number(platformFee) || 0;
+    const taxAmount = Number(tax) || 0;
+    const discountAmount = Number(discount) || 0;
+    const totalAmount = Number(total) || 0;
+
+    const isReturn = transactionType === 'Return' || totalAmount < 0;
+    const date = new Date(transactionDate || openedAt).toLocaleString();
+
+    const absoluteSubtotal = Math.abs(subtotalAmount);
+    const absolutePlatformFee = Math.abs(platformFeeAmount);
+    const absoluteTax = Math.abs(taxAmount);
+    const absoluteDiscount = Math.abs(discountAmount);
+    const absoluteTotal = Math.abs(totalAmount);
+    const headerClass = isReturn ? 'bg-red-600' : 'bg-green-600';
+    const headerHoverClass = isReturn ? 'hover:bg-red-700' : 'hover:bg-green-700';
+    const actionClass = isReturn ? 'bg-red-600 hover:bg-red-700 shadow-red-600/20' : 'bg-green-600 hover:bg-green-700 shadow-green-600/20';
+    const modalTitle = isReturn ? 'Confirm Return' : 'Confirm Sale';
+    const totalLabel = isReturn ? 'Total Refund' : 'Total';
+    const printLabel = isReturn ? 'Print Voucher' : 'Print Receipt';
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[150] p-4 print:static print:bg-white print:p-0 print:block">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden print:shadow-none print:w-full print:max-w-none print:rounded-none">
                 {/* Header */}
-                <div className="bg-green-600 p-4 flex justify-between items-center text-white print:hidden">
+                <div className={`${headerClass} p-4 flex justify-between items-center text-white print:hidden`}>
                     <h2 className="font-bold text-lg flex items-center gap-2">
                         <CheckCircle size={20} />
-                        Confirm Sale
+                        {modalTitle}
                     </h2>
-                    <button onClick={onClose} className="hover:bg-green-700 p-1 rounded-full transition-colors">
+                    <button onClick={onClose} className={`${headerHoverClass} p-1 rounded-full transition-colors`}>
                         <X size={20} />
                     </button>
                 </div>
@@ -79,42 +131,61 @@ const BillModal = ({ isOpen, onClose, items, total, onPrint, customer, discount 
                     )}
 
                     <div className="border-t border-b border-dashed border-gray-300 py-4 mb-4 space-y-3">
-                        {items.map((item) => (
-                            <div key={item.id} className="flex justify-between text-sm">
+                        {normalizedItems.map((item, index) => {
+                            const quantity = Number(item.quantity ?? item.billedQuantity ?? 0);
+                            const unitPrice = Number(item.price ?? item.unitPrice ?? 0);
+                            const lineSubtotal = Number(item.subtotal ?? item.netItemTotal ?? (quantity * unitPrice));
+                            const lineTotal = Number.isFinite(lineSubtotal) ? Math.abs(lineSubtotal) : 0;
+
+                            return (
+                            <div key={item.id || item.medicineId || `${item.name || 'item'}-${index}`} className="flex justify-between text-sm">
                                 <div>
                                     <span className="font-medium text-gray-800">{item.name}</span>
-                                    {item.mrp > 0 && (
-                                        <div className="text-[10px] text-gray-400 line-through">MRP: Rs. {item.mrp.toFixed(2)}</div>
+                                    {Number(item.mrp) > 0 && (
+                                        <div className="text-[10px] text-gray-400 line-through">MRP: Rs. {Number(item.mrp).toFixed(2)}</div>
                                     )}
                                     <div className="text-xs text-gray-500">
-                                        {item.quantity} x Rs. {item.price.toFixed(2)}
+                                        {quantity} x Rs. {unitPrice.toFixed(2)}
                                     </div>
+                                    {item.saleType && (
+                                        <div className="text-[10px] text-gray-400">
+                                            {item.saleType === 'Pack' ? 'Pack Sale' : 'Unit Sale'}
+                                        </div>
+                                    )}
                                 </div>
                                 <span className="font-medium text-gray-800">
-                                    Rs. {(item.quantity * item.price).toFixed(2)}
+                                    Rs. {lineTotal.toFixed(2)}
                                 </span>
                             </div>
-                        ))}
+                        )})}
                     </div>
 
                     <div className="space-y-2 text-sm mb-6">
                         <div className="flex justify-between text-gray-600">
                             <span>Subtotal</span>
-                            <span>{formatPrice(total - 0.10 + discount)}</span>
+                            <span>{formatPrice(absoluteSubtotal)}</span>
                         </div>
-                        <div className="flex justify-between text-gray-600">
-                            <span>Platform Fee</span>
-                            <span>{formatPrice(0.10)}</span>
-                        </div>
-                        {discount > 0 && (
+                        {absoluteTax > 0 && (
+                            <div className="flex justify-between text-gray-600">
+                                <span>Tax</span>
+                                <span>{formatPrice(absoluteTax)}</span>
+                            </div>
+                        )}
+                        {absolutePlatformFee > 0 && (
+                            <div className="flex justify-between text-gray-600">
+                                <span>Platform Fee</span>
+                                <span>{formatPrice(absolutePlatformFee)}</span>
+                            </div>
+                        )}
+                        {absoluteDiscount > 0 && (
                             <div className="flex justify-between text-green-600">
                                 <span>Discount {voucher ? `(${voucher.code})` : ''}</span>
-                                <span>-Rs. {discount.toFixed(2)}</span>
+                                <span>-{formatPrice(absoluteDiscount)}</span>
                             </div>
                         )}
                         <div className="flex justify-between font-bold text-lg text-gray-900 pt-2 border-t border-gray-200">
-                            <span>Total</span>
-                            <span>{formatPrice(total)}</span>
+                            <span>{totalLabel}</span>
+                            <span>{formatPrice(absoluteTotal)}</span>
                         </div>
 
                         <div className="pt-4 mt-4 border-t border-dashed border-gray-300">
@@ -146,8 +217,9 @@ const BillModal = ({ isOpen, onClose, items, total, onPrint, customer, discount 
                                 <QRCodeCanvas
                                     value={JSON.stringify({
                                         id: transactionId || billNumber,
-                                        total: total,
-                                        date: new Date().toISOString()
+                                        total: totalAmount,
+                                        date: transactionDate || openedAt,
+                                        type: transactionType
                                     })}
                                     size={64}
                                     level={"M"}
@@ -167,10 +239,10 @@ const BillModal = ({ isOpen, onClose, items, total, onPrint, customer, discount 
                     </button>
                     <button
                         onClick={onPrint}
-                        className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-600/20"
+                        className={`flex-1 px-4 py-2 text-white rounded-lg font-bold transition-colors flex items-center justify-center gap-2 shadow-lg ${actionClass}`}
                     >
                         <Printer size={18} />
-                        Print Receipt
+                        {printLabel}
                     </button>
                 </div>
             </div>

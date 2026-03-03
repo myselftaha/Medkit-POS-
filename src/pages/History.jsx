@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../context/ToastContext';
-import { Search, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Calendar } from 'lucide-react';
 import TransactionTable from '../components/history/TransactionTable';
 import TransactionDetailsModal from '../components/history/TransactionDetailsModal';
 import SummaryBar from '../components/history/SummaryBar';
@@ -48,6 +48,7 @@ const History = () => {
     const [transactionToVoid, setTransactionToVoid] = useState(null);
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
     const [transactionToPrint, setTransactionToPrint] = useState(null);
+    const [isZReportPrintMode, setIsZReportPrintMode] = useState(false);
 
     // Fetch Transactions
     const fetchTransactions = async (page = 1) => {
@@ -149,7 +150,11 @@ const History = () => {
     };
 
     const handleZReport = () => {
-        window.print();
+        setIsZReportPrintMode(true);
+        setTimeout(() => {
+            window.print();
+            setTimeout(() => setIsZReportPrintMode(false), 150);
+        }, 50);
     };
 
     const handleVoid = (transaction) => {
@@ -190,11 +195,13 @@ const History = () => {
     };
 
     const handlePrint = (transaction) => {
+        setIsZReportPrintMode(false);
         setTransactionToPrint(transaction);
         setIsPrintModalOpen(true);
     };
 
     const handleActualPrint = () => {
+        setIsZReportPrintMode(false);
         window.print();
         setIsPrintModalOpen(false);
     };
@@ -348,18 +355,24 @@ const History = () => {
                 onPrint={handleActualPrint}
                 items={transactionToPrint?.items || []}
                 total={transactionToPrint?.total || 0}
+                subtotal={transactionToPrint?.subtotal || 0}
+                platformFee={transactionToPrint?.platformFee || 0}
+                tax={transactionToPrint?.tax || 0}
                 discount={transactionToPrint?.discount || 0}
                 customer={transactionToPrint?.customer}
                 transactionId={transactionToPrint?.transactionId}
                 billNumber={transactionToPrint?.billNumber}
                 invoiceNumber={transactionToPrint?.invoiceNumber}
                 paymentMethod={transactionToPrint?.paymentMethod}
+                transactionDate={transactionToPrint?.createdAt}
+                transactionType={transactionToPrint?.type || 'Sale'}
             />
 
             <ZReport
                 stats={summaryStats}
                 dateFilter={dateFilter}
                 customDates={customDates}
+                enabled={isZReportPrintMode}
             />
         </>
     );

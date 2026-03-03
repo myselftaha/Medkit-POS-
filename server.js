@@ -251,6 +251,9 @@ const API_ROLE_RULES = [
     { methods: ['POST'], pattern: /^\/api\/expiry\/send-alert$/, roles: MANAGEMENT_ROLES },
     { methods: ['GET'], pattern: /^\/api\/dashboard\/stats$/, roles: MANAGEMENT_ROLES },
     { methods: ['GET'], pattern: /^\/api\/transactions(?:\/stats\/summary|\/[^/]+)?$/, roles: SALES_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/transactions$/, roles: SALES_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/transactions\/sync$/, roles: SALES_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/transactions\/[^/]+\/void$/, roles: MANAGEMENT_ROLES },
     { methods: ['GET'], pattern: /^\/api\/expenses(?:\/[^/]+)?$/, roles: MANAGEMENT_ROLES },
     { methods: ['GET'], pattern: /^\/api\/staff(?:\/[^/]+(?:\/(advances|payments|audit-logs))?)?$/, roles: MANAGEMENT_ROLES },
 ];
@@ -699,10 +702,17 @@ const transactionSchema = new mongoose.Schema({
     },
     items: [{
         id: String,
+        medicineId: String,
         name: String,
         price: Number,
         quantity: Number,
         subtotal: Number,
+        unit: String,
+        saleType: { type: String, enum: ['Single', 'Pack'], default: 'Single' },
+        packSize: { type: Number, default: 1 },
+        discount: { type: Number, default: 0 },
+        returnReason: String,
+        batchId: String,
         restock: { type: Boolean, default: true } // For returns: true = restock, false = write-off
     }],
     subtotal: { type: Number, required: true },
@@ -710,6 +720,7 @@ const transactionSchema = new mongoose.Schema({
     discount: { type: Number, default: 0 },
     tax: { type: Number, default: 0 }, // Added Tax
     total: { type: Number, required: true },
+    notes: String,
     voucher: {
         code: String,
         discountType: String,
@@ -731,8 +742,8 @@ const counterSchema = new mongoose.Schema({
 const Counter = mongoose.models.Counter || mongoose.model('Counter', counterSchema);
 
 const getNextBillNumber = async () => {
-    const counter = await Counter.findByIdAndUpdate(
-        'billNumber',
+    const counter = await Counter.findOneAndUpdate(
+        { _id: 'billNumber' },
         [
             {
                 $set: {
@@ -745,9 +756,13 @@ const getNextBillNumber = async () => {
                 }
             }
         ],
-        { new: true, upsert: true, updatePipeline: true }
+        {
+            new: true,
+            upsert: true,
+            setDefaultsOnInsert: false
+        }
     );
-    return counter.seq;
+    return counter?.seq || 1001;
 };
 
 const syncBillNumberCounter = async () => {
@@ -3279,6 +3294,48 @@ app.put('/api/vouchers/:id/use', async (req, res) => {
     }
 });
 
+const normalizeTransactionItemId = (item = {}) =>
+    String(item.id || item.medicineId || item._id || '').trim();
+
+const isPackTransactionItem = (item = {}) =>
+    item.saleType === 'Pack' || String(item.unit || '').toLowerCase() === 'pack';
+
+const getTransactionItemPackSize = (item = {}, fallbackPackSize = 1) => {
+    const itemPackSize = Number(item.packSize);
+    if (Number.isFinite(itemPackSize) && itemPackSize > 0) return itemPackSize;
+    const fallback = Number(fallbackPackSize);
+    return Number.isFinite(fallback) && fallback > 0 ? fallback : 1;
+};
+
+const getTransactionItemUnits = (item = {}, fallbackPackSize = 1) => {
+    const quantity = Number(item.quantity ?? item.billedQuantity ?? 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) return 0;
+    const packSize = getTransactionItemPackSize(item, fallbackPackSize);
+    return isPackTransactionItem(item) ? quantity * packSize : quantity;
+};
+
+const findMedicineForTransactionItem = async (item = {}) => {
+    const candidates = [
+        item.id,
+        item.medicineId,
+        item._id
+    ].filter(Boolean);
+
+    for (const candidate of candidates) {
+        if (typeof candidate === 'number' || (typeof candidate === 'string' && candidate.match(/^\d+$/))) {
+            const medByNumericId = await Medicine.findOne({ id: parseInt(candidate, 10) });
+            if (medByNumericId) return medByNumericId;
+        }
+
+        if (typeof candidate === 'string' && candidate.match(/^[0-9a-fA-F]{24}$/)) {
+            const medByObjectId = await Medicine.findById(candidate);
+            if (medByObjectId) return medByObjectId;
+        }
+    }
+
+    return null;
+};
+
 // Create transaction (Sale or Return)
 app.post('/api/transactions', authenticateToken, async (req, res) => {
     try {
@@ -3300,15 +3357,26 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
         // Map items to match Transaction Schema
         const formattedItems = Array.isArray(items) ? items.map(item => ({
             id: item.id || item.medicineId?.toString(), // Handle both formats
+            medicineId: (item.medicineId || item.id || item._id || '').toString(),
             name: item.name || item.medicineName,
             price: Number(item.price || item.unitPrice || 0),
             quantity: Number(item.quantity || item.billedQuantity || 0),
             subtotal: Number(item.subtotal || item.netItemTotal || 0),
+            unit: item.unit || (item.saleType === 'Pack' ? 'pack' : 'unit'),
+            saleType: item.saleType === 'Pack' ? 'Pack' : 'Single',
+            packSize: Number(item.packSize) > 0 ? Number(item.packSize) : 1,
+            discount: Number(item.discount || 0),
+            returnReason: item.returnReason || '',
+            batchId: item.batchId || '',
             restock: item.restock !== undefined ? item.restock : true,
-            // Preserve original fields if needed for debugging or loose schema
-            medicineId: item.medicineId,
-            saleType: item.saleType
         })) : [];
+
+        if (formattedItems.some(item => !normalizeTransactionItemId(item))) {
+            return res.status(400).json({ message: 'Each item must include a valid medicine identifier' });
+        }
+        if (formattedItems.some(item => !Number.isFinite(item.quantity) || item.quantity <= 0)) {
+            return res.status(400).json({ message: 'Each item must include quantity greater than zero' });
+        }
 
         // If it's a return, ensure totals are negative if not already
         const isReturn = type === 'Return';
@@ -3323,9 +3391,76 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
 
         // If it's a return, try to find the original bill number
         let originalBillNumber = null;
+        let originalSaleTransaction = null;
         if (isReturn && req.body.originalTransactionId) {
-            const originalTx = await Transaction.findOne({ transactionId: req.body.originalTransactionId });
-            if (originalTx) originalBillNumber = originalTx.billNumber;
+            originalSaleTransaction = await Transaction.findOne({
+                transactionId: req.body.originalTransactionId,
+                type: 'Sale'
+            });
+
+            if (!originalSaleTransaction) {
+                return res.status(400).json({ message: 'Original sale transaction not found for return' });
+            }
+
+            if (originalSaleTransaction.status === 'Voided') {
+                return res.status(400).json({ message: 'Cannot return against a voided sale transaction' });
+            }
+
+            originalBillNumber = originalSaleTransaction.billNumber;
+
+            // Prevent over-returning items beyond sold quantity.
+            const soldUnitsByItem = new Map();
+            originalSaleTransaction.items.forEach((originalItem) => {
+                const key = normalizeTransactionItemId(originalItem);
+                if (!key) return;
+                const soldUnits = getTransactionItemUnits(originalItem, originalItem.packSize || 1);
+                soldUnitsByItem.set(key, (soldUnitsByItem.get(key) || 0) + soldUnits);
+            });
+
+            const previousReturns = await Transaction.find({
+                type: 'Return',
+                status: { $ne: 'Voided' },
+                originalTransactionId: req.body.originalTransactionId
+            }).select('items');
+
+            const alreadyReturnedUnitsByItem = new Map();
+            previousReturns.forEach((returnTx) => {
+                returnTx.items.forEach((returnedItem) => {
+                    const key = normalizeTransactionItemId(returnedItem);
+                    if (!key) return;
+                    const units = getTransactionItemUnits(returnedItem, returnedItem.packSize || 1);
+                    alreadyReturnedUnitsByItem.set(key, (alreadyReturnedUnitsByItem.get(key) || 0) + units);
+                });
+            });
+
+            const requestedUnitsByItem = new Map();
+            formattedItems.forEach((item) => {
+                const key = normalizeTransactionItemId(item);
+                if (!key) return;
+                const units = getTransactionItemUnits(item, item.packSize || 1);
+                requestedUnitsByItem.set(key, (requestedUnitsByItem.get(key) || 0) + units);
+            });
+
+            for (const [itemKey, requestedUnits] of requestedUnitsByItem.entries()) {
+                const soldUnits = soldUnitsByItem.get(itemKey);
+                if (!soldUnits) {
+                    return res.status(400).json({
+                        message: 'Return contains item not present in original sale',
+                        itemId: itemKey
+                    });
+                }
+
+                const alreadyReturned = alreadyReturnedUnitsByItem.get(itemKey) || 0;
+                if (alreadyReturned + requestedUnits > soldUnits + 0.0001) {
+                    return res.status(400).json({
+                        message: 'Return quantity exceeds sold quantity',
+                        itemId: itemKey,
+                        soldUnits,
+                        alreadyReturned,
+                        requestedUnits
+                    });
+                }
+            }
         }
 
         const newTransaction = new Transaction({
@@ -3344,61 +3479,36 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
 
         if (isReturn) {
             // RESTOCK Logic for Returns
-            console.log("Processing restock for return items:", formattedItems);
+            console.log('Processing restock for return items:', formattedItems);
             for (const item of formattedItems) {
-                // Find medicine primarily by ID (number) or fallback to name if ID structure differs
-                let medicine = null;
-                const itemId = item.id;
+                if (item.restock === false) continue;
 
-                // 1. Try finding by custom numeric id first if it looks like a number
-                if (typeof itemId === 'number' || (typeof itemId === 'string' && itemId.match(/^\d+$/))) {
-                    console.log(`Return Restock: Looking up by numeric id: ${itemId}`);
-                    medicine = await Medicine.findOne({ id: parseInt(itemId) });
+                const medicine = await findMedicineForTransactionItem(item);
+                if (!medicine) {
+                    console.log('Return: Medicine NOT found for item:', item);
+                    continue;
                 }
 
-                // 2. If not found, try finding by MongoDB _id (if it looks like one)
-                if (!medicine && typeof itemId === 'string' && itemId.match(/^[0-9a-fA-F]{24}$/)) {
-                    console.log(`Return Restock: Looking up by _id: ${itemId}`);
-                    medicine = await Medicine.findById(itemId);
-                }
+                const restockAmount = getTransactionItemUnits(item, medicine.packSize || 1);
+                if (restockAmount <= 0) continue;
 
-                // 3. Last resort: check _id property of item if it exists
-                if (!medicine && item._id) {
-                    console.log(`Return Restock: Looking up by item._id: ${item._id}`);
-                    medicine = await Medicine.findById(item._id);
-                }
+                medicine.stock = (medicine.stock || 0) + restockAmount;
+                await medicine.save();
 
-                if (medicine) {
-                    console.log(`Return: Medicine found: ${medicine.name}. Old Stock: ${medicine.stock}`);
-
-                    const packSize = medicine.packSize || 1;
-                    const isPack = item.saleType === 'Pack';
-                    const restockAmount = isPack ? (item.quantity * packSize) : item.quantity;
-
-                    console.log(`Return Restock: Type=${item.saleType}, PackSize=${packSize}, Qty=${item.quantity} => TotalRestock=${restockAmount}`);
-
-                    medicine.stock += restockAmount;
-                    await medicine.save();
-                    console.log(`Return: Medicine updated: ${medicine.name}. New Stock: ${medicine.stock}`);
-                } else {
-                    console.log(`❌ Return: Medicine NOT found for item:`, item);
-                }
+                console.log(`Return: Restocked ${medicine.name} by ${restockAmount}. New stock: ${medicine.stock}`);
             }
 
-            // Update customer stats for Return (decreases spent)
+            // Update customer stats for Return (decreases spent only)
             if (customer && customer.id) {
                 await Customer.findByIdAndUpdate(
                     customer.id,
                     {
-
                         $inc: {
-                            totalPurchases: 1,
                             totalSpent: finalTotal // finalTotal is negative
                         }
                     }
                 );
             }
-
         } else {
             // NORMAL SALE Logic
             let finalCustomer = customer;
@@ -3409,8 +3519,9 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
 
                 if (existingCustomer) {
                     // Update existing customer stats
-                    existingCustomer.totalPurchases += 1;
-                    existingCustomer.totalSpent += total;
+                    const normalizedTotal = Number(total) || 0;
+                    existingCustomer.totalPurchases = (existingCustomer.totalPurchases || 0) + 1;
+                    existingCustomer.totalSpent = (existingCustomer.totalSpent || 0) + normalizedTotal;
                     // Optionally update name/email if they were blank before
                     if (!existingCustomer.name || existingCustomer.name === 'Walk-in') existingCustomer.name = customer.name;
                     if (!existingCustomer.email && customer.email) existingCustomer.email = customer.email;
@@ -3426,7 +3537,7 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
                         address: 'POS Entry',
                         joinDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
                         totalPurchases: 1,
-                        totalSpent: total,
+                        totalSpent: Number(total) || 0,
                         status: 'Active'
                     });
                     const savedCustomer = await newCustomer.save();
@@ -3439,7 +3550,7 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
                     {
                         $inc: {
                             totalPurchases: 1,
-                            totalSpent: total
+                            totalSpent: Number(total) || 0
                         }
                     }
                 );
@@ -3457,56 +3568,25 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
             }
 
             // DEDUCT STOCK Logic for Sales
-            console.log("Processing stock deduction for items:", formattedItems);
+            console.log('Processing stock deduction for items:', formattedItems);
             for (const item of formattedItems) {
-                // Find medicine primarily by ID (number) or fallback to name if ID structure differs
-                console.log(`Checking stock for item: ID=${item.id}, _id=${item._id}, Qty=${item.quantity}`);
-
-                let medicine = null;
-                const itemId = item.id;
-
-                // 1. Try finding by custom numeric id first if it looks like a number
-                if (typeof itemId === 'number' || (typeof itemId === 'string' && itemId.match(/^\d+$/))) {
-                    console.log(`Looking up by numeric id: ${itemId}`);
-                    medicine = await Medicine.findOne({ id: parseInt(itemId) });
+                const medicine = await findMedicineForTransactionItem(item);
+                if (!medicine) {
+                    console.log('Sale: Medicine NOT found for item:', item);
+                    continue;
                 }
 
-                // 2. If not found, try finding by MongoDB _id (if it looks like one)
-                if (!medicine && typeof itemId === 'string' && itemId.match(/^[0-9a-fA-F]{24}$/)) {
-                    console.log(`Looking up by _id: ${itemId}`);
-                    medicine = await Medicine.findById(itemId);
-                }
+                const deduction = getTransactionItemUnits(item, medicine.packSize || 1);
+                if (deduction <= 0) continue;
 
-                // 3. Last resort: check _id property of item if it exists
-                if (!medicine && item._id) {
-                    console.log(`Looking up by item._id: ${item._id}`);
-                    medicine = await Medicine.findById(item._id);
-                }
+                medicine.stock = Math.max(0, (medicine.stock || 0) - deduction);
+                await medicine.save();
+                console.log(`Sale: Deducted ${deduction} from ${medicine.name}. New stock: ${medicine.stock}`);
 
-                if (medicine) {
-                    console.log(`Medicine found: ${medicine.name}. Old Stock: ${medicine.stock}`);
-
-                    // Logic for Pack vs Single Unit deduction
-                    const packSize = medicine.packSize || 1;
-                    const isPack = item.saleType === 'Pack';
-                    const deduction = isPack ? (item.quantity * packSize) : item.quantity;
-
-                    console.log(`Stock Deduction: Type=${item.saleType}, PackSize=${packSize}, Qty=${item.quantity} => TotalDeduction=${deduction}`);
-
-                    // Ensure we don't go below zero (optional, but good practice)
-                    medicine.stock = Math.max(0, (medicine.stock || 0) - deduction);
-                    await medicine.save();
-                    console.log(`Medicine updated: ${medicine.name}. New Stock: ${medicine.stock}`);
-
-                    // Trigger Low Stock Check
-                    await checkLowStock(medicine);
-
-                } else {
-                    console.log(`❌ Medicine NOT found for item:`, item);
-                }
+                // Trigger Low Stock Check
+                await checkLowStock(medicine);
             }
         }
-
         res.status(201).json(savedTransaction);
     } catch (err) {
         console.error("Transaction Error:", err);
@@ -4867,6 +4947,15 @@ app.post('/api/transactions/sync', authenticateToken, async (req, res) => {
         if (subtotal === undefined || total === undefined) {
             return res.status(400).json({ message: 'subtotal and total are required' });
         }
+        if (items.some(item => !normalizeTransactionItemId(item))) {
+            return res.status(400).json({ message: 'Each item must include a valid medicine identifier' });
+        }
+        if (items.some(item => Number(item.billedQuantity || item.quantity || 0) <= 0)) {
+            return res.status(400).json({ message: 'Each item must include quantity greater than zero' });
+        }
+
+        const isReturn = type === 'Return';
+        const finalSyncTotal = isReturn && Number(total) > 0 ? -Number(total) : Number(total);
 
         // ✅ IDEMPOTENCY CHECK - Prevent duplicate transactions from offline sync
         const existingTransaction = await Transaction.findOne({ transactionId });
@@ -4897,16 +4986,24 @@ app.post('/api/transactions/sync', authenticateToken, async (req, res) => {
             },
             items: items.map(item => ({
                 id: item.medicineId || item.id,
+                medicineId: (item.medicineId || item.id || item._id || '').toString(),
                 name: item.medicineName || item.name,
                 price: item.unitPrice || item.price,
                 quantity: item.billedQuantity || item.quantity,
-                subtotal: item.netItemTotal || (item.unitPrice * item.billedQuantity)
+                subtotal: item.netItemTotal || item.subtotal || ((item.unitPrice || item.price || 0) * (item.billedQuantity || item.quantity || 0)),
+                unit: item.unit || (item.saleType === 'Pack' ? 'pack' : 'unit'),
+                saleType: item.saleType === 'Pack' ? 'Pack' : 'Single',
+                packSize: Number(item.packSize) > 0 ? Number(item.packSize) : 1,
+                discount: Number(item.discount || 0),
+                returnReason: item.returnReason || '',
+                batchId: item.batchId || '',
+                restock: item.restock !== undefined ? item.restock : true
             })),
             subtotal,
             platformFee,
             discount,
             tax,
-            total,
+            total: finalSyncTotal,
             voucher: voucher || null,
             paymentMethod,
             processedBy,
@@ -4919,44 +5016,25 @@ app.post('/api/transactions/sync', authenticateToken, async (req, res) => {
 
         // Update stock for Sales (reduce) and Returns (increase if restocking)
         if (type === 'Sale') {
-            for (const item of items) {
-                const medicineId = item.medicineId || item.id;
-                let medicine = null;
-
-                // Try to find medicine by numeric ID or ObjectId
-                if (typeof medicineId === 'number' || (typeof medicineId === 'string' && medicineId.match(/^\d+$/))) {
-                    medicine = await Medicine.findOne({ id: parseInt(medicineId) });
-                }
-                if (!medicine && typeof medicineId === 'string' && medicineId.match(/^[0-9a-fA-F]{24}$/)) {
-                    medicine = await Medicine.findById(medicineId);
-                }
-
+            for (const item of newTransaction.items) {
+                const medicine = await findMedicineForTransactionItem(item);
                 if (medicine) {
-                    const quantityToReduce = item.billedQuantity || item.quantity || 0;
-                    medicine.stock = Math.max(0, medicine.stock - quantityToReduce);
+                    const quantityToReduce = getTransactionItemUnits(item, medicine.packSize || 1);
+                    medicine.stock = Math.max(0, (medicine.stock || 0) - quantityToReduce);
                     await medicine.save();
                     console.log(`[STOCK] Reduced ${medicine.name} stock by ${quantityToReduce}. New stock: ${medicine.stock}`);
                 } else {
-                    console.warn(`[STOCK] Medicine not found: ${medicineId}`);
+                    console.warn(`[STOCK] Medicine not found: ${item.id || item.medicineId}`);
                 }
             }
         } else if (type === 'Return') {
             // Handle returns - increase stock if restocking
-            for (const item of items) {
+            for (const item of newTransaction.items) {
                 if (item.restock === false) continue; // Skip write-offs
 
-                const medicineId = item.medicineId || item.id;
-                let medicine = null;
-
-                if (typeof medicineId === 'number' || (typeof medicineId === 'string' && medicineId.match(/^\d+$/))) {
-                    medicine = await Medicine.findOne({ id: parseInt(medicineId) });
-                }
-                if (!medicine && typeof medicineId === 'string' && medicineId.match(/^[0-9a-fA-F]{24}$/)) {
-                    medicine = await Medicine.findById(medicineId);
-                }
-
+                const medicine = await findMedicineForTransactionItem(item);
                 if (medicine) {
-                    const quantityToAdd = item.billedQuantity || item.quantity || 0;
+                    const quantityToAdd = getTransactionItemUnits(item, medicine.packSize || 1);
                     medicine.stock += quantityToAdd;
                     await medicine.save();
                     console.log(`[STOCK] Restocked ${medicine.name} by ${quantityToAdd}. New stock: ${medicine.stock}`);
@@ -4969,9 +5047,13 @@ app.post('/api/transactions/sync', authenticateToken, async (req, res) => {
             const existingCustomer = await Customer.findById(customer.id);
             if (existingCustomer) {
                 existingCustomer.totalPurchases = (existingCustomer.totalPurchases || 0) + 1;
-                existingCustomer.totalSpent = (existingCustomer.totalSpent || 0) + total;
+                existingCustomer.totalSpent = (existingCustomer.totalSpent || 0) + Number(total || 0);
                 await existingCustomer.save();
             }
+        } else if (customer.id && type === 'Return') {
+            await Customer.findByIdAndUpdate(customer.id, {
+                $inc: { totalSpent: finalSyncTotal }
+            });
         }
 
         res.status(201).json(savedTransaction);
@@ -5106,6 +5188,10 @@ app.get('/api/transactions/stats/summary', async (req, res) => {
 app.post('/api/transactions/:id/void', authenticateToken, async (req, res) => {
     try {
         const { reason, voidedBy } = req.body;
+        if (!reason || !reason.trim()) {
+            return res.status(400).json({ message: 'Void reason is required' });
+        }
+
         const transaction = await Transaction.findById(req.params.id);
 
         if (!transaction) {
@@ -5116,43 +5202,15 @@ app.post('/api/transactions/:id/void', authenticateToken, async (req, res) => {
             return res.status(400).json({ message: 'Transaction is already voided' });
         }
 
-        // Update Status
-        transaction.status = 'Voided';
-        transaction.voidReason = reason;
-        transaction.voidedBy = voidedBy || 'Admin';
-        transaction.voidedAt = new Date();
-
-        await transaction.save();
-
-        // REVERSE STOCK LOGIC
-        // If it was a Sale, we usually want to put items back? 
-        // User didn't specify strict Void logic, but usually "Void" means it didn't happen.
-        // If it's a recent sale (e.g. same day), we put stock back.
-        // If we are voiding history from 2 years ago, do we put stock back? Probably yes, 
-        // assuming it was an error and stock wasn't actually sold.
-
-        // However, if we void a Return, we might take stock back OUT?
-        // Let's keep it simple: Only handle Sale Void -> Restock for now to be safe.
-
         if (transaction.type === 'Sale') {
             for (const item of transaction.items) {
-                let medicine = null;
-                const itemId = item.id;
-                // Lookup similar to transaction creation
-                if (typeof itemId === 'number' || (typeof itemId === 'string' && itemId.match(/^\d+$/))) {
-                    medicine = await Medicine.findOne({ id: parseInt(itemId) });
-                }
-                if (!medicine && typeof itemId === 'string' && itemId.match(/^[0-9a-fA-F]{24}$/)) {
-                    medicine = await Medicine.findById(itemId);
-                }
-                if (!medicine && item._id) {
-                    medicine = await Medicine.findById(item._id);
-                }
+                const medicine = await findMedicineForTransactionItem(item);
 
                 if (medicine) {
-                    console.log(`Void: Restocking ${medicine.name} (Qty: ${item.quantity})`);
-                    medicine.stock += item.quantity;
+                    const unitsToRestore = getTransactionItemUnits(item, medicine.packSize || 1);
+                    medicine.stock = (medicine.stock || 0) + unitsToRestore;
                     await medicine.save();
+                    console.log(`Void Sale: Restocked ${medicine.name} by ${unitsToRestore}`);
                 }
             }
 
@@ -5162,7 +5220,32 @@ app.post('/api/transactions/:id/void', authenticateToken, async (req, res) => {
                     $inc: { totalPurchases: -1, totalSpent: -transaction.total }
                 });
             }
+        } else if (transaction.type === 'Return') {
+            // Reverse a return: remove previously restocked items again
+            for (const item of transaction.items) {
+                if (item.restock === false) continue;
+                const medicine = await findMedicineForTransactionItem(item);
+                if (!medicine) continue;
+
+                const unitsToRemove = getTransactionItemUnits(item, medicine.packSize || 1);
+                medicine.stock = Math.max(0, (medicine.stock || 0) - unitsToRemove);
+                await medicine.save();
+                console.log(`Void Return: Deducted ${unitsToRemove} from ${medicine.name}`);
+            }
+
+            if (transaction.customer && transaction.customer.id) {
+                await Customer.findByIdAndUpdate(transaction.customer.id, {
+                    $inc: { totalSpent: -transaction.total }
+                });
+            }
         }
+
+        // Mark transaction void only after stock/customer reversals finish.
+        transaction.status = 'Voided';
+        transaction.voidReason = reason;
+        transaction.voidedBy = voidedBy || 'Admin';
+        transaction.voidedAt = new Date();
+        await transaction.save();
 
         res.json({ message: 'Transaction voided successfully', transaction });
 

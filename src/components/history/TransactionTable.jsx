@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, Printer, Repeat, Ban, AlertTriangle, MoreVertical, Copy } from 'lucide-react';
+import { Eye, Printer, Repeat, Ban, MoreVertical, Copy } from 'lucide-react';
 
 const TransactionTable = ({ transactions, onViewDetails, onVoid, onReturn, onDuplicate, onPrint }) => {
     const [actionOpenId, setActionOpenId] = useState(null);
@@ -17,12 +17,6 @@ const TransactionTable = ({ transactions, onViewDetails, onVoid, onReturn, onDup
             hour: '2-digit',
             minute: '2-digit'
         });
-    };
-
-    // Helper to determine status color
-    const getStatusStyle = (status) => {
-        if (status === 'Voided') return 'bg-gray-100 text-gray-500 line-through';
-        return 'bg-green-50 text-green-700'; // Posted
     };
 
     return (
@@ -54,8 +48,8 @@ const TransactionTable = ({ transactions, onViewDetails, onVoid, onReturn, onDup
                             {transactions.map((tx) => {
                                 const isVoided = tx.status === 'Voided';
                                 const isReturn = tx.type === 'Return';
-                                const itemCount = tx.items.reduce((sum, i) => sum + (i.quantity || 0), 0);
-                                const netAmount = tx.total - (tx.tax || 0);
+                                const itemCount = (tx.items || []).reduce((sum, i) => sum + (i.quantity || 0), 0);
+                                const netAmount = (tx.total || 0) - (tx.tax || 0);
 
                                 return (
                                     <tr key={tx._id} className={`hover:bg-gray-50 transition-colors ${isVoided ? 'bg-gray-50/50' : ''}`}>

@@ -434,6 +434,28 @@ const Home = () => {
 
     // ... existing useEffects ...
 
+    const preparedCartItems = useMemo(() => {
+        return cartItems.map(item => {
+            const quantity = Number(item.quantity) || 0;
+            const packSize = Number(item.packSize) || 1;
+            const saleType = (item.saleType || 'Single') === 'Pack' ? 'Pack' : 'Single';
+            const basePrice = Number(item.customPrice ?? item.price) || 0;
+            const effectivePrice = saleType === 'Pack' ? basePrice : (basePrice / packSize);
+            const itemDiscount = Number(item.discount) || 0;
+            const lineSubtotal = (effectivePrice * quantity) - itemDiscount;
+
+            return {
+                ...item,
+                quantity,
+                packSize,
+                saleType,
+                price: effectivePrice,
+                subtotal: lineSubtotal,
+                unit: saleType === 'Pack' ? 'pack' : 'unit'
+            };
+        });
+    }, [cartItems]);
+
     const handlePrint = async () => {
         if (cartItems.length === 0) {
             showToast('Cart is empty', 'error');
@@ -476,26 +498,17 @@ const Home = () => {
                 doctorName: customerInfo.doctorName,
                 billDate: customerInfo.billDate
             },
-            items: cartItems.map(item => {
-                const packSize = parseInt(item.packSize) || 1;
-                const isPack = (item.saleType || 'Single') === 'Pack';
-                const basePrice = item.customPrice || parseFloat(item.price);
-                const effectivePrice = isPack ? basePrice : (basePrice / packSize);
-
-                const itemSubtotal = effectivePrice * (parseInt(item.quantity) || 1);
-                const itemTotal = itemSubtotal - (parseFloat(item.discount) || 0);
-
-                return {
-                    medicineId: item.id || item._id,
-                    medicineName: item.name,
-                    billedQuantity: item.quantity,
-                    unit: item.isUnit ? 'unit' : 'pack', // Assuming 'unit' or 'pack' based on isUnit
-                    unitPrice: effectivePrice,
-                    netItemTotal: itemTotal,
-                    saleType: item.saleType || 'Single',
-                    discount: parseFloat(item.discount) || 0,
-                };
-            }),
+            items: preparedCartItems.map(item => ({
+                medicineId: item.id || item._id,
+                medicineName: item.name,
+                billedQuantity: item.quantity,
+                unit: item.unit,
+                unitPrice: item.price,
+                netItemTotal: item.subtotal,
+                saleType: item.saleType,
+                packSize: item.packSize,
+                discount: Number(item.discount) || 0,
+            })),
             subtotal,
             platformFee,
             discount: discountAmount,
@@ -608,17 +621,8 @@ const Home = () => {
         }
     };
 
-    // Calculate subtotal with custom prices and item-level discounts
-    const subtotal = cartItems.reduce((sum, item) => {
-        const packSize = parseInt(item.packSize) || 1;
-        const isPack = (item.saleType || 'Single') === 'Pack';
-        const basePrice = item.customPrice || item.price;
-        const effectivePrice = isPack ? basePrice : (basePrice / packSize);
-
-        const itemSubtotal = effectivePrice * item.quantity;
-        const itemTotal = itemSubtotal - (item.discount || 0);
-        return sum + itemTotal;
-    }, 0);
+    // Calculate subtotal from normalized receipt items to keep UI + DB in sync
+    const subtotal = preparedCartItems.reduce((sum, item) => sum + (Number(item.subtotal) || 0), 0);
 
     const platformFee = 0.10;
 
@@ -908,9 +912,13 @@ const Home = () => {
                 transactionId={currentTransactionId}
                 billNumber={currentBillNumber}
                 invoiceNumber={currentInvoiceNumber}
-                items={cartItems}
+                items={preparedCartItems}
                 total={cartTotal}
+                subtotal={subtotal}
+                platformFee={platformFee}
+                tax={taxAmount}
                 discount={discountAmount}
+                transactionType="Sale"
                 customer={selectedCustomer || {
                     name: customerInfo.name || 'Walk-in',
                     phone: customerInfo.phone || '',

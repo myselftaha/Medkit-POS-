@@ -86,8 +86,8 @@ const TransactionDetailsModal = ({ isOpen, onClose, transaction }) => {
                                         <tr key={index} className="hover:bg-gray-50">
                                             <td className="px-4 py-3 font-medium text-gray-800">{item.name}</td>
                                             <td className="px-4 py-3 text-center text-gray-600">{item.quantity}</td>
-                                            <td className="px-4 py-3 text-right text-gray-600">Rs. {item.price.toFixed(2)}</td>
-                                            <td className="px-4 py-3 text-right font-medium text-gray-800">Rs. {item.subtotal.toFixed(2)}</td>
+                                            <td className="px-4 py-3 text-right text-gray-600">Rs. {Number(item.price || 0).toFixed(2)}</td>
+                                            <td className="px-4 py-3 text-right font-medium text-gray-800">Rs. {Number(item.subtotal || 0).toFixed(2)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -127,16 +127,16 @@ const TransactionDetailsModal = ({ isOpen, onClose, transaction }) => {
                         <div className="space-y-2">
                             <div className="flex justify-between text-gray-700">
                                 <span>Subtotal:</span>
-                                <span className="font-medium">Rs. {transaction.subtotal.toFixed(2)}</span>
+                                <span className="font-medium">Rs. {Number(transaction.subtotal || 0).toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between text-gray-700">
                                 <span>Platform Fee:</span>
-                                <span className="font-medium">Rs. {transaction.platformFee.toFixed(2)}</span>
+                                <span className="font-medium">Rs. {Number(transaction.platformFee || 0).toFixed(2)}</span>
                             </div>
                             {transaction.discount > 0 && (
                                 <div className="flex justify-between text-red-600">
                                     <span>Discount:</span>
-                                    <span className="font-medium">-Rs. {transaction.discount.toFixed(2)}</span>
+                                    <span className="font-medium">-Rs. {Number(transaction.discount || 0).toFixed(2)}</span>
                                 </div>
                             )}
                             <div className={`border-t pt-2 mt-2 ${transaction.type === 'Return' ? 'border-red-300' : 'border-green-300'
