@@ -31,6 +31,10 @@ const Home = () => {
     const [selectedVoucher, setSelectedVoucher] = useState(null);
     const [medicines, setMedicines] = useState([]);
     const [isOnline, setIsOnline] = useState(navigator.onLine);
+    const searchAbortRef = useRef(null);
+    const searchCacheRef = useRef(new Map());
+    const cachedMedicineIdsRef = useRef(new Set());
+    const searchRequestIdRef = useRef(0);
 
     const { showToast } = useToast();
 
@@ -65,7 +69,15 @@ const Home = () => {
 
     // Server-side search function
     const searchMedicines = useCallback(async (query, formula) => {
-        if (!query && !formula) {
+        const requestId = ++searchRequestIdRef.current;
+        const effectiveQuery = (query?.trim() || formula?.trim() || '');
+        const cacheKey = effectiveQuery.toLowerCase();
+
+        if (!effectiveQuery) {
+            if (searchAbortRef.current) {
+                searchAbortRef.current.abort();
+                searchAbortRef.current = null;
+            }
             setMedicines([]);
             setLoading(false);
             return;
@@ -75,22 +87,34 @@ const Home = () => {
         try {
             if (!isOnline) {
                 const localMeds = await getMedicinesFromLocal();
-                const q = (query?.trim() || formula?.trim() || '').toLowerCase();
                 const filtered = localMeds.filter(m =>
-                    m.name?.toLowerCase().includes(q) ||
-                    m.formulaCode?.toLowerCase().includes(q) ||
-                    m.genericName?.toLowerCase().includes(q)
+                    m.name?.toLowerCase().includes(cacheKey) ||
+                    m.formulaCode?.toLowerCase().includes(cacheKey) ||
+                    m.genericName?.toLowerCase().includes(cacheKey)
                 );
                 setMedicines(filtered.slice(0, 50));
                 return;
             }
 
+            const cachedEntry = searchCacheRef.current.get(cacheKey);
+            if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+                setMedicines(cachedEntry.data);
+                return;
+            }
+
+            if (searchAbortRef.current) {
+                searchAbortRef.current.abort();
+            }
+            const controller = new AbortController();
+            searchAbortRef.current = controller;
+
             const params = new URLSearchParams();
-            const effectiveQuery = query?.trim() || formula?.trim() || '';
-            if (effectiveQuery) params.append('q', effectiveQuery);
+            params.append('q', effectiveQuery);
             params.append('limit', '50');
+            params.append('includeTotal', 'false');
 
             const response = await fetch(`${API_URL}/api/medicines/search?${params.toString()}`, {
+                signal: controller.signal,
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
             if (!response.ok) {
@@ -99,20 +123,34 @@ const Home = () => {
             }
             const data = await response.json();
 
-            if (data && data.medicines) {
-                setMedicines(data.medicines);
-                // Background save for offline use
-                saveMedicinesToLocal(data.medicines);
-            } else {
-                setMedicines([]);
+            const serverMedicines = Array.isArray(data?.medicines) ? data.medicines : [];
+            setMedicines(serverMedicines);
+            searchCacheRef.current.set(cacheKey, {
+                data: serverMedicines,
+                expiresAt: Date.now() + 15_000
+            });
+
+            // Only store newly seen medicine ids to avoid expensive IndexedDB writes on every keystroke.
+            const newMedicines = serverMedicines.filter((m) => {
+                if (!m?._id || cachedMedicineIdsRef.current.has(m._id)) return false;
+                cachedMedicineIdsRef.current.add(m._id);
+                return true;
+            });
+            if (newMedicines.length > 0) {
+                saveMedicinesToLocal(newMedicines).catch(() => { });
             }
         } catch (error) {
+            if (error?.name === 'AbortError') {
+                return;
+            }
             console.error('Error searching medicines:', error);
             // Fallback to local on error
             const localMeds = await getMedicinesFromLocal();
             setMedicines(localMeds.slice(0, 20));
         } finally {
-            setLoading(false);
+            if (requestId === searchRequestIdRef.current) {
+                setLoading(false);
+            }
         }
     }, [isOnline]);
 
@@ -124,6 +162,14 @@ const Home = () => {
 
         return () => clearTimeout(timer);
     }, [searchQuery, formulaSearch, searchMedicines]);
+
+    useEffect(() => {
+        return () => {
+            if (searchAbortRef.current) {
+                searchAbortRef.current.abort();
+            }
+        };
+    }, []);
 
     // Handle connection status
     useEffect(() => {
@@ -655,82 +701,79 @@ const Home = () => {
                 <div className="flex-1 flex flex-col overflow-hidden">
                     {/* Removed Global Loader */}
 
-                    {/* Customer Details Section - Full Width */}
-                    <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-4">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2">
-                                <UserRound size={18} className="text-[#00c950]" />
-                                <h3 className="font-bold text-gray-800">Customer Details</h3>
-                            </div>
-                            <button
-                                onClick={() => setIsAttachCustomerModalOpen(true)}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow text-gray-700 hover:border-[#00c950]/50 hover:bg-green-50/10 transition-all duration-200 text-xs font-semibold"
-                            >
-                                <UserRound size={14} color="#00c950" strokeWidth={2} />
-                                <span>{selectedCustomer ? selectedCustomer.name : 'Select Existing (F4)'}</span>
-                            </button>
-                        </div>
-                        <div className="grid grid-cols-5 gap-4">
-                            <div className="space-y-1">
-                                <label className="text-xs font-semibold text-gray-500">Customer Name <span className="text-red-500">*</span></label>
-                                <input
-                                    type="text"
-                                    placeholder="Enter Name"
-                                    value={customerInfo.name}
-                                    onChange={(e) => setCustomerInfo(prev => ({ ...prev, name: e.target.value }))}
-                                    className="w-full px-3 py-2 bg-gray-50 border border-transparent rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00c950]/20 focus:border-[#00c950] transition-all"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-semibold text-gray-500">Mobile Number <span className="text-red-500">*</span></label>
-                                <input
-                                    type="text"
-                                    placeholder="Enter Mobile"
-                                    value={customerInfo.phone}
-                                    onChange={(e) => setCustomerInfo(prev => ({ ...prev, phone: e.target.value }))}
-                                    className="w-full px-3 py-2 bg-gray-50 border border-transparent rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00c950]/20 focus:border-[#00c950] transition-all"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-semibold text-gray-500">Email ID</label>
-                                <input
-                                    type="email"
-                                    placeholder="Enter Email"
-                                    value={customerInfo.email}
-                                    onChange={(e) => setCustomerInfo(prev => ({ ...prev, email: e.target.value }))}
-                                    className="w-full px-3 py-2 bg-gray-50 border border-transparent rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00c950]/20 focus:border-[#00c950] transition-all"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-semibold text-gray-500">Doctor Name</label>
-                                <input
-                                    type="text"
-                                    placeholder="Enter Doctor Name"
-                                    value={customerInfo.doctorName}
-                                    onChange={(e) => setCustomerInfo(prev => ({ ...prev, doctorName: e.target.value }))}
-                                    className="w-full px-3 py-2 bg-gray-50 border border-transparent rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00c950]/20 focus:border-[#00c950] transition-all"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-semibold text-gray-500">Select Bill Date <span className="text-red-500">*</span></label>
-                                <div className="relative">
-                                    <input
-                                        type="date"
-                                        value={customerInfo.billDate}
-                                        onChange={(e) => setCustomerInfo(prev => ({ ...prev, billDate: e.target.value }))}
-                                        className="w-full px-3 py-2 bg-gray-50 border border-transparent rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00c950]/20 focus:border-[#00c950] transition-all appearance-none"
-                                    />
-                                    <Calendar size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <div className="flex-1 flex gap-6 min-h-0 overflow-hidden">
+                        {/* Left Side - Customer Details + Product Table */}
+                        <div className="flex-1 flex flex-col overflow-hidden overflow-x-hidden">
+                            {/* Customer Details Section - Left Side */}
+                            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-4">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-2">
+                                        <UserRound size={18} className="text-[#00c950]" />
+                                        <h3 className="font-bold text-gray-800">Customer Details</h3>
+                                    </div>
+                                    <button
+                                        onClick={() => setIsAttachCustomerModalOpen(true)}
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow text-gray-700 hover:border-[#00c950]/50 hover:bg-green-50/10 transition-all duration-200 text-xs font-semibold"
+                                    >
+                                        <UserRound size={14} color="#00c950" strokeWidth={2} />
+                                        <span>{selectedCustomer ? selectedCustomer.name : 'Select Existing (F4)'}</span>
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-gray-500">Customer Name <span className="text-red-500">*</span></label>
+                                        <input
+                                            type="text"
+                                            placeholder="Enter Name"
+                                            value={customerInfo.name}
+                                            onChange={(e) => setCustomerInfo(prev => ({ ...prev, name: e.target.value }))}
+                                            className="w-full px-3 py-2 bg-gray-50 border border-transparent rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00c950]/20 focus:border-[#00c950] transition-all"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-gray-500">Mobile Number <span className="text-red-500">*</span></label>
+                                        <input
+                                            type="text"
+                                            placeholder="Enter Mobile"
+                                            value={customerInfo.phone}
+                                            onChange={(e) => setCustomerInfo(prev => ({ ...prev, phone: e.target.value }))}
+                                            className="w-full px-3 py-2 bg-gray-50 border border-transparent rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00c950]/20 focus:border-[#00c950] transition-all"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-gray-500">Email ID</label>
+                                        <input
+                                            type="email"
+                                            placeholder="Enter Email"
+                                            value={customerInfo.email}
+                                            onChange={(e) => setCustomerInfo(prev => ({ ...prev, email: e.target.value }))}
+                                            className="w-full px-3 py-2 bg-gray-50 border border-transparent rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00c950]/20 focus:border-[#00c950] transition-all"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-gray-500">Doctor Name</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Enter Doctor Name"
+                                            value={customerInfo.doctorName}
+                                            onChange={(e) => setCustomerInfo(prev => ({ ...prev, doctorName: e.target.value }))}
+                                            className="w-full px-3 py-2 bg-gray-50 border border-transparent rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00c950]/20 focus:border-[#00c950] transition-all"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-gray-500">Select Bill Date <span className="text-red-500">*</span></label>
+                                        <div className="relative">
+                                            <input
+                                                type="date"
+                                                value={customerInfo.billDate}
+                                                onChange={(e) => setCustomerInfo(prev => ({ ...prev, billDate: e.target.value }))}
+                                                className="w-full px-3 py-2 bg-gray-50 border border-transparent rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00c950]/20 focus:border-[#00c950] transition-all appearance-none"
+                                            />
+                                            <Calendar size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-
-                    <div className="flex-1 flex gap-6 min-h-0 overflow-hidden">
-                        {/* Left Side - Product Table */}
-                        <div className="flex-1 flex flex-col overflow-hidden overflow-x-hidden">
-
-                            <div className="mb-2" />
 
                             {/* Unified Search and Table Container */}
                             <div className="flex-1 min-h-0 flex flex-col bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -783,7 +826,7 @@ const Home = () => {
                                                 <tr>
                                                     <td colSpan="5" className="py-12">
                                                         <div className="flex justify-center items-center">
-                                                            <Loader type="wave" size="md" message="Searching..." />
+                                                            <Loader size="md" message="Searching..." />
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -871,8 +914,8 @@ const Home = () => {
                                 </div>
                             </div>
                         </div>
-                        {/* Right Side - Cart */}
-                        <div className="w-[600px]">
+                        {/* Right Side - Cart (Top Aligned) */}
+                        <div className="w-[600px] min-w-[600px] h-full">
                             <Cart
                                 items={cartItems}
                                 onUpdateQuantity={updateQuantity}

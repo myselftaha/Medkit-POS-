@@ -155,7 +155,7 @@ const ExpiryManagement = () => {
     if (loading) {
         return (
             <div className="flex items-center justify-center h-screen">
-                <Loader type="wave" size="lg" message="Loading expiry data..." />
+                <Loader size="lg" message="Loading expiry data..." />
             </div>
         );
     }
@@ -395,7 +395,7 @@ const ExpiryManagement = () => {
                 <div className="space-y-6">
                     {!predictions ? (
                         <div className="flex justify-center p-12">
-                            <Loader type="dots" />
+                            <Loader size="md" message="Building AI insights..." />
                         </div>
                     ) : (
                         <>

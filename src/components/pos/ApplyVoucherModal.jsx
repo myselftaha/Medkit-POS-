@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Ticket, Check, AlertCircle, Search } from 'lucide-react';
 import API_URL from '../../config/api';
+import Loader from '../common/Loader';
 
 
 const ApplyVoucherModal = ({ isOpen, onClose, onApply, cartTotal }) => {
@@ -154,7 +155,7 @@ const ApplyVoucherModal = ({ isOpen, onClose, onApply, cartTotal }) => {
                         </h3>
                         <div className="space-y-3 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
                             {loading ? (
-                                <div className="text-center py-4 text-gray-400 text-sm">Loading vouchers...</div>
+                                <Loader size="md" message="Loading vouchers..." />
                             ) : availableVouchers.length > 0 ? (
                                 availableVouchers.map(voucher => (
                                     <div

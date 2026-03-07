@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, Lock, AlertCircle } from 'lucide-react';
+import Loader from './Loader';
 
 const PasswordConfirmModal = ({ isOpen, onClose, onConfirm, title, message }) => {
     const [password, setPassword] = useState('');
@@ -96,7 +97,7 @@ const PasswordConfirmModal = ({ isOpen, onClose, onConfirm, title, message }) =>
                             >
                                 {loading ? (
                                     <>
-                                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white"></div>
+                                        <Loader size="xs" compact inline />
                                         <span>Verifying...</span>
                                     </>
                                 ) : (

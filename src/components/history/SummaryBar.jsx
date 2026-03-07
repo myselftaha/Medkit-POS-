@@ -1,13 +1,12 @@
 import React from 'react';
 import { DollarSign, TrendingUp, AlertCircle, ShoppingBag, CreditCard, Wallet, Banknote } from 'lucide-react';
+import Loader from '../common/Loader';
 
 const SummaryBar = ({ stats, loading }) => {
     if (loading) {
         return (
-            <div className="grid grid-cols-5 gap-4 mb-6">
-                {[...Array(5)].map((_, i) => (
-                    <div key={i} className="h-24 bg-gray-100 rounded-xl animate-pulse"></div>
-                ))}
+            <div className="mb-6 bg-white rounded-xl border border-gray-100 shadow-sm py-8">
+                <Loader size="lg" message="Loading summary..." />
             </div>
         );
     }

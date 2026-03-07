@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, CheckCircle, AlertCircle, Save, Info, Tag, Package, Beaker } from 'lucide-react';
 import API_URL from '../../config/api';
 import { useToast } from '../../context/ToastContext';
+import Loader from '../common/Loader';
 
 const ReceiveStockModal = ({ isOpen, onClose, order, onSuccess }) => {
     const { showToast } = useToast();
@@ -146,8 +147,7 @@ const ReceiveStockModal = ({ isOpen, onClose, order, onSuccess }) => {
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 bg-gray-50/30">
                     {isFetchingMedicine ? (
                         <div className="flex flex-col items-center justify-center py-20">
-                            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#00c950]"></div>
-                            <p className="text-sm text-gray-500 mt-4">Fetching medicine details...</p>
+                            <Loader size="lg" message="Fetching medicine details..." />
                         </div>
                     ) : (
                         <div className="space-y-6">
@@ -303,7 +303,7 @@ const ReceiveStockModal = ({ isOpen, onClose, order, onSuccess }) => {
                             className="flex items-center gap-3 bg-[#00c950] hover:bg-[#00b347] disabled:bg-gray-300 text-white px-10 py-3 rounded-2xl font-bold text-sm transition-all shadow-xl shadow-[#00c950]/20 active:scale-95"
                         >
                             {loading ? (
-                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                <Loader size="xs" compact inline />
                             ) : (
                                 <>
                                     <CheckCircle size={20} />

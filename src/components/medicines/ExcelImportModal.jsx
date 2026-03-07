@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle } from 'lucide-react';
 import { downloadCsv, parseCsvToJson, rowsToCsv } from '../../utils/excelUtils';
+import Loader from '../common/Loader';
 
 const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
     const [file, setFile] = useState(null);
@@ -434,7 +435,7 @@ const ExcelImportModal = ({ isOpen, onClose, onImport }) => {
                         >
                             {importing ? (
                                 <>
-                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    <Loader size="xs" compact inline />
                                     Importing...
                                 </>
                             ) : (

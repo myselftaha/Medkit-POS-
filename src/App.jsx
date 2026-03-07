@@ -83,7 +83,7 @@ function App() {
   if (setupStatus.loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <Loader type="spinner" size="lg" />
+        <Loader size="lg" message="Preparing POS workspace..." />
       </div>
     );
   }
@@ -95,7 +95,7 @@ function App() {
           <Router>
             <Suspense fallback={
               <div className="flex items-center justify-center min-h-screen bg-gray-50">
-                <Loader type="spinner" size="lg" />
+                <Loader size="lg" message="Loading module..." />
               </div>
             }>
               <Routes>

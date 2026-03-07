@@ -3,6 +3,7 @@ import { useNotifications } from '../context/NotificationContext';
 import { formatDistanceToNow } from 'date-fns';
 import { Bell, Check, Clock, AlertTriangle, Info, Tag, Trash2, Filter, CheckCheck } from 'lucide-react';
 import API_URL from '../config/api';
+import Loader from '../components/common/Loader';
 
 const Notifications = () => {
     const {
@@ -97,7 +98,9 @@ const Notifications = () => {
             {/* List */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 {loading ? (
-                    <div className="p-12 text-center text-gray-400">Loading...</div>
+                    <div className="p-12">
+                        <Loader size="lg" message="Loading notifications..." />
+                    </div>
                 ) : filteredList.length === 0 ? (
                     <div className="p-12 text-center text-gray-400">
                         <Bell size={48} className="mx-auto mb-4 opacity-10" />

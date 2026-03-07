@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import API_URL from '../config/api';
+import Loader from '../components/common/Loader';
 
 const CashDrawer = () => {
     const { showToast } = useToast();
@@ -308,7 +309,7 @@ const CashDrawer = () => {
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00c950]"></div>
+                <Loader size="md" message="Loading cash drawer..." />
             </div>
         );
     }

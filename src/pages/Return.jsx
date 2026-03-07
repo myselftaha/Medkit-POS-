@@ -7,6 +7,7 @@ import {
 import { useToast } from '../context/ToastContext';
 import API_URL from '../config/api';
 import { useSettings } from '../context/SettingsContext';
+import Loader from '../components/common/Loader';
 
 const Return = () => {
     // --- State ---
@@ -733,8 +734,17 @@ const Return = () => {
                                     disabled={returnCart.length === 0 || isProcessingReturn}
                                     className="w-full py-4 bg-red-600 text-white rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg shadow-red-500/10 hover:bg-red-700 disabled:opacity-50 disabled:bg-gray-400 transition-all flex items-center justify-center gap-2 active:transform active:scale-[0.98]"
                                 >
-                                    <RotateCcw size={18} />
-                                    {isProcessingReturn ? 'Processing...' : 'Confirm Return'}
+                                    {isProcessingReturn ? (
+                                        <>
+                                            <Loader size="xs" compact inline />
+                                            Processing Return...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <RotateCcw size={18} />
+                                            Confirm Return
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         </div>

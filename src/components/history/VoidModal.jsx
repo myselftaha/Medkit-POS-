@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
+import Loader from '../common/Loader';
 
 const VoidModal = ({ isOpen, onClose, onConfirm, transaction }) => {
     const [reason, setReason] = useState('');
@@ -109,7 +110,7 @@ const VoidModal = ({ isOpen, onClose, onConfirm, transaction }) => {
                     >
                         {isSubmitting ? (
                             <>
-                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                <Loader size="xs" compact inline />
                                 Voiding...
                             </>
                         ) : (

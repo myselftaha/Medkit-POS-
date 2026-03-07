@@ -138,23 +138,20 @@ const Dashboard = () => {
                 const chartStart = toLocalISO(thirtyDaysAgo);
                 const chartEnd = toLocalISO(today);
 
-                const [statsData, txData, medData, supplierData] = await Promise.all([
-                    fetch(`${API_URL}/api/dashboard/stats?startDate=${startDate}&endDate=${endDate}`, { headers })
+                const expiryDays = Number(settings?.expiryAlertDays) || 30;
+                const [statsData, txData, medData] = await Promise.all([
+                    fetch(`${API_URL}/api/dashboard/stats?startDate=${startDate}&endDate=${endDate}&expiryAlertDays=${expiryDays}`, { headers })
                         .then((res) => readJson(res, 'Failed to fetch dashboard stats')),
-                    fetch(`${API_URL}/api/transactions?startDate=${chartStart}&endDate=${chartEnd}&limit=1000`, { headers })
+                    fetch(`${API_URL}/api/transactions?startDate=${chartStart}&endDate=${chartEnd}&limit=1000&fields=dashboard&includeTotal=false`, { headers })
                         .then((res) => readJson(res, 'Failed to fetch transactions')),
-                    fetch(`${API_URL}/api/medicines?limit=10000`, { headers })
-                        .then((res) => readJson(res, 'Failed to fetch medicines')),
-                    fetch(`${API_URL}/api/suppliers`, { headers })
-                        .then((res) => readJson(res, 'Failed to fetch suppliers'))
-                        .catch(() => [])
+                    fetch(`${API_URL}/api/medicines?limit=3000&inInventory=true&status=Active&fields=dashboard&includeTotal=false`, { headers })
+                        .then((res) => readJson(res, 'Failed to fetch medicines'))
                 ]);
 
                 const transactions = txData.data || [];
                 const medicines = medData.data || [];
-                const suppliers = Array.isArray(supplierData) ? supplierData : [];
 
-                processDashboardData(statsData, transactions, medicines, suppliers);
+                processDashboardData(statsData, transactions, medicines);
             } catch (error) {
                 console.error("Error fetching dashboard data:", error);
             } finally {
@@ -163,41 +160,10 @@ const Dashboard = () => {
         };
 
         fetchData();
-    }, [dateRange, customStartDate, customEndDate, settings?.lowStockThreshold, settings?.expiryAlertDays]);
+    }, [dateRange, customStartDate, customEndDate, settings?.expiryAlertDays]);
 
-    const processDashboardData = (backendStats = {}, transactions = [], medicines = [], suppliers = []) => {
+    const processDashboardData = (backendStats = {}, transactions = [], medicines = []) => {
         const today = new Date();
-        const lowStockThreshold = settings?.lowStockThreshold || 10;
-        const expiryAlertDays = settings?.expiryAlertDays || 30;
-
-        const expiryAlertDate = new Date(today);
-        expiryAlertDate.setDate(expiryAlertDate.getDate() + expiryAlertDays);
-
-        const lowStockCount = medicines.filter((m) => {
-            const packSize = Number(m.packSize) || 1;
-            const stockInPacks = (Number(m.stock) || 0) / packSize;
-            const medicineThreshold = Number(m.reorderLevel || m.minStock || 0) || 0;
-            const thresholdInPacks = Math.max(lowStockThreshold, medicineThreshold);
-            return stockInPacks <= thresholdInPacks;
-        }).length;
-
-        const expiryCandidates = medicines.filter((m) => {
-            if (!m.expiryDate) return false;
-            const expiryDate = new Date(m.expiryDate);
-            return expiryDate >= today && expiryDate <= expiryAlertDate;
-        });
-
-        const expiryValue = expiryCandidates.reduce((sum, m) => {
-            const packSize = Number(m.packSize) || 1;
-            const packs = (Number(m.stock) || 0) / packSize;
-            const price = Number(m.price || m.sellingPrice) || 0;
-            return sum + (packs * price);
-        }, 0);
-
-        const totalPayables = suppliers.reduce((sum, s) => {
-            const due = Number(s.totalPayable ?? s.dueAmount) || 0;
-            return sum + Math.max(due, 0);
-        }, 0);
 
         setStats({
             todaySales: Number(backendStats?.raw?.sales) || 0,
@@ -205,10 +171,10 @@ const Dashboard = () => {
             todayReturns: Number(backendStats?.raw?.returns) || 0,
             todayReturnsCount: transactions.filter((t) => t.type === 'Return').length,
             todayTransactions: 0, // Placeholder
-            totalPayables,
-            expiryCount: expiryCandidates.length,
-            expiryValue: Math.round(expiryValue),
-            lowStockCount
+            totalPayables: Number(backendStats?.raw?.totalPayables) || 0,
+            expiryCount: Number(backendStats?.raw?.expiryCount) || 0,
+            expiryValue: Math.round(Number(backendStats?.raw?.expiryValue) || 0),
+            lowStockCount: Number(backendStats?.raw?.lowStock) || 0
         });
 
         // 2. Sales Trend (Last 7 Days)
@@ -235,14 +201,24 @@ const Dashboard = () => {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(today.getDate() - 30);
         const recentTx = transactions.filter(t => new Date(t.createdAt) >= thirtyDaysAgo && t.type !== 'Return');
+        const medicineCategoryById = new Map();
+        const medicineCategoryByName = new Map();
+        medicines.forEach((m) => {
+            const category = m.category || 'Uncategorized';
+            if (m?._id) medicineCategoryById.set(String(m._id), category);
+            if (m?.id !== undefined && m?.id !== null) medicineCategoryById.set(String(m.id), category);
+            if (m?.name) medicineCategoryByName.set(String(m.name).trim().toLowerCase(), category);
+        });
 
         const catMap = {};
         recentTx.forEach(tx => {
+            if (!Array.isArray(tx.items)) return;
             tx.items.forEach(item => {
-                let category = 'Uncategorized';
-                // Flexible match for medicine
-                const med = medicines.find(m => m.name === item.name || m.id == item.id || m._id == item.id);
-                if (med && med.category) category = med.category;
+                const itemId = item.id ?? item.medicineId;
+                const category =
+                    medicineCategoryById.get(String(itemId ?? '')) ||
+                    medicineCategoryByName.get(String(item.name || '').trim().toLowerCase()) ||
+                    'Uncategorized';
 
                 if (!catMap[category]) catMap[category] = 0;
                 catMap[category] += (item.quantity * (item.price || 0));
@@ -259,6 +235,7 @@ const Dashboard = () => {
         const thisMonthTx = transactions.filter(t => new Date(t.createdAt) >= thisMonthStart && t.type !== 'Return');
         const productMap = {};
         thisMonthTx.forEach(tx => {
+            if (!Array.isArray(tx.items)) return;
             tx.items.forEach(item => {
                 if (!productMap[item.name]) productMap[item.name] = 0;
                 productMap[item.name] += item.quantity;
@@ -306,7 +283,7 @@ const Dashboard = () => {
         <div className="pb-8 space-y-6">
             {loading && (
                 <div className="absolute inset-0 bg-white bg-opacity-70 flex items-center justify-center z-50">
-                    <Loader type="pulse" message="Loading dashboard data..." size="lg" />
+                    <Loader message="Loading dashboard data..." size="lg" />
                 </div>
             )}
             <div className="flex justify-between items-center">

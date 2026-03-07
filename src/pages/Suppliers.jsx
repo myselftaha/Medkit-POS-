@@ -10,6 +10,7 @@ import DeleteConfirmationModal from '../components/common/DeleteConfirmationModa
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import ReceiveStockModal from '../components/suppliers/ReceiveStockModal';
 import { CheckCircle, XCircle } from 'lucide-react';
+import Loader from '../components/common/Loader';
 
 const Suppliers = () => {
     const { showToast } = useToast();
@@ -298,7 +299,7 @@ const Suppliers = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-8">
                     {loading ? (
                         <div className="col-span-full flex justify-center py-20">
-                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-500"></div>
+                            <Loader size="lg" message="Loading distributors..." />
                         </div>
                     ) : filteredSuppliers.length > 0 ? (
                         filteredSuppliers.map(supplier => (
@@ -436,7 +437,7 @@ const Suppliers = () => {
                                 {loadingOrders ? (
                                     <tr>
                                         <td colSpan="6" className="px-6 py-12 text-center">
-                                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[#00c950]"></div>
+                                            <Loader size="md" compact />
                                         </td>
                                     </tr>
                                 ) : pendingOrders.length > 0 ? (

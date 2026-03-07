@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { 
     Lock, 
     User, 
-    Loader2, 
     Eye, 
     EyeOff, 
     Store, 
@@ -15,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import API_URL from '../config/api';
+import Loader from '../components/common/Loader';
 
 const LoginPage = () => {
     const [credentials, setCredentials] = useState({ username: '', password: '' });
@@ -161,7 +161,7 @@ const LoginPage = () => {
                         >
                             {loading ? (
                                 <>
-                                    <Loader2 className="animate-spin" size={18} />
+                                    <Loader size="xs" compact inline />
                                     <span>Signing In...</span>
                                 </>
                             ) : (

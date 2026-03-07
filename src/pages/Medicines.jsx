@@ -9,6 +9,7 @@ import DeleteConfirmationModal from '../components/common/DeleteConfirmationModa
 import ExcelImportModal from '../components/medicines/ExcelImportModal';
 import API_URL from '../config/api';
 import FilterDropdown from '../components/common/FilterDropdown';
+import Loader from '../components/common/Loader';
 
 const Medicines = () => {
     const { showToast } = useToast();
@@ -783,7 +784,7 @@ const Medicines = () => {
                         {loading ? (
                             <tr>
                                 <td colSpan="10" className="px-4 py-12 text-center text-gray-500">
-                                    Loading medicines...
+                                    <Loader size="md" message="Loading medicines..." />
                                 </td>
                             </tr>
                         ) : groupedMedicines.length === 0 ? (

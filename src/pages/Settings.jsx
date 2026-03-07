@@ -9,6 +9,7 @@ import API_URL from '../config/api';
 import TabNavigation from '../components/common/TabNavigation';
 import WhatsAppSettings from '../components/settings/WhatsAppSettings';
 import PasswordConfirmModal from '../components/common/PasswordConfirmModal';
+import Loader from '../components/common/Loader';
 
 const Settings = () => {
     const { settings, updateSettings, restoreDefaults, loading } = useSettings();
@@ -239,7 +240,7 @@ const Settings = () => {
     };
 
     if (loading) {
-        return <div className="p-8 text-center text-gray-500">Loading settings...</div>;
+        return <div className="p-8"><Loader size="lg" message="Loading settings..." /></div>;
     }
 
     const tabs = [
@@ -274,7 +275,7 @@ const Settings = () => {
                         disabled={isSaving}
                         className="flex items-center gap-2 px-6 py-2 bg-green-500 text-white rounded-lg font-bold hover:bg-green-600 transition-colors shadow-lg shadow-green-500/20 disabled:opacity-50"
                     >
-                        {isSaving ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white"></div> : <Save size={18} />}
+                        {isSaving ? <Loader size="xs" compact inline /> : <Save size={18} />}
                         Save Changes
                     </button>
                 </div>
@@ -927,14 +928,14 @@ const Settings = () => {
                                         disabled={isSaving}
                                         className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
                                     >
-                                        {isSaving ? <RefreshCcw className="animate-spin" size={16} /> : <Download size={16} />}
+                                        {isSaving ? <Loader size="xs" compact inline /> : <Download size={16} />}
                                         Backup Now
                                     </button>
                                 </div>
 
                                 <div className="bg-gray-50 rounded-lg border p-4 max-h-60 overflow-y-auto">
                                     {loadingBackups ? (
-                                        <div className="text-center text-gray-500 py-4">Loading backups...</div>
+                                        <Loader size="md" message="Loading backups..." />
                                     ) : backups.length === 0 ? (
                                         <div className="text-center text-gray-500 py-4">No backups found</div>
                                     ) : (

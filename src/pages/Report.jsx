@@ -38,6 +38,7 @@ import {
     Area
 } from 'recharts';
 import API_URL from '../config/api';
+import Loader from '../components/common/Loader';
 
 const Report = () => {
     const [activeTab, setActiveTab] = useState('Overview');
@@ -424,12 +425,11 @@ const Report = () => {
                                         <div>
                                             <p className="text-sm font-semibold text-gray-700">
                                                 {item.label}
-                                                {exporting && <span className="ml-2 text-[10px] text-green-600 animate-pulse">Processing...</span>}
                                             </p>
                                             <p className="text-[10px] text-gray-400">{item.sub}</p>
                                         </div>
                                         {exporting ? (
-                                            <div className="w-4 h-4 border-2 border-[#00c950] border-t-transparent rounded-full animate-spin" />
+                                            <Loader size="xs" compact inline />
                                         ) : (
                                             <Download className="w-4 h-4 text-gray-400 group-hover:text-[#00c950]" />
                                         )}
@@ -456,7 +456,7 @@ const Report = () => {
 
 const OverviewTab = ({ data, loading }) => {
     if (loading || !data) {
-        return <div className="p-12 text-center text-gray-500">Loading analytics...</div>;
+        return <div className="p-12"><Loader size="lg" message="Loading analytics..." /></div>;
     }
 
     // Helper to map icon names to components if needed, or just rely on string matching if we pass components
@@ -644,7 +644,7 @@ const OverviewTab = ({ data, loading }) => {
 
 const SalesAnalysisTab = ({ data, loading }) => {
     if (loading || !data) {
-        return <div className="p-12 text-center text-gray-500">Loading sales analysis...</div>;
+        return <div className="p-12"><Loader size="lg" message="Loading sales analysis..." /></div>;
     }
 
     // Icon mapping
@@ -776,7 +776,7 @@ const SalesAnalysisTab = ({ data, loading }) => {
 
 const InventoryTab = ({ data, loading }) => {
     if (loading || !data) {
-        return <div className="p-12 text-center text-gray-500">Loading inventory data...</div>;
+        return <div className="p-12"><Loader size="lg" message="Loading inventory data..." /></div>;
     }
 
     const iconMap = {

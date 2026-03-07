@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, Plus, Package, Tag, MapPin, Info, DollarSign, Percent, Save, ChevronDown } from 'lucide-react';
+import Loader from '../common/Loader';
 
 const AddToInventoryModal = ({ isOpen, onClose, onConfirm, supplies }) => {
     const [searchTerm, setSearchTerm] = useState('');
@@ -372,7 +373,7 @@ const AddToInventoryModal = ({ isOpen, onClose, onConfirm, supplies }) => {
                             >
                                 {submitting ? (
                                     <>
-                                        <div className="w-5 h-5 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+                                        <Loader size="xs" compact inline />
                                         Processing...
                                     </>
                                 ) : (

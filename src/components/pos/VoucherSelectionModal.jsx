@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, Ticket, Calendar, DollarSign } from 'lucide-react';
 import API_URL from '../../config/api';
+import Loader from '../common/Loader';
 
 
 const VoucherSelectionModal = ({ isOpen, onClose, onSelectVoucher, currentVoucher }) => {
@@ -112,7 +113,7 @@ const VoucherSelectionModal = ({ isOpen, onClose, onSelectVoucher, currentVouche
                 {/* Voucher List */}
                 <div className="flex-1 overflow-y-auto p-6">
                     {loading ? (
-                        <div className="text-center py-8 text-gray-500">Loading vouchers...</div>
+                        <Loader size="lg" message="Loading vouchers..." />
                     ) : filteredVouchers.length === 0 ? (
                         <div className="text-center py-8 text-gray-500">
                             {searchQuery ? 'No vouchers found matching your search' : 'No active vouchers available'}

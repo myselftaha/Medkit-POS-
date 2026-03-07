@@ -3,6 +3,7 @@ import { X, Plus, Trash2, AlertCircle, MessageCircle } from 'lucide-react';
 import API_URL from '../../config/api';
 import { useToast } from '../../context/ToastContext';
 import AddMedicineModal from '../supplies/AddMedicineModal';
+import Loader from '../common/Loader';
 
 const PurchaseOrderModal = ({ isOpen, onClose, supplier, onSuccess }) => {
     const { showToast } = useToast();
@@ -514,7 +515,7 @@ const PurchaseOrderModal = ({ isOpen, onClose, supplier, onSuccess }) => {
                         >
                             {submitting ? (
                                 <>
-                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    <Loader size="xs" compact inline />
                                     Creating...
                                 </>
                             ) : (

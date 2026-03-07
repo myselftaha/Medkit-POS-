@@ -10,6 +10,7 @@ import ZReport from '../components/history/ZReport';
 import BillModal from '../components/pos/BillModal';
 import { useNavigate } from 'react-router-dom';
 import API_URL from '../config/api';
+import Loader from '../components/common/Loader';
 
 import { USER_ROLES } from '../config/roles';
 
@@ -319,10 +320,7 @@ const History = () => {
                 <div className="relative">
                     {loading && (
                         <div className="absolute inset-0 z-20 bg-white/60 backdrop-blur-[2px] flex items-center justify-center rounded-xl min-h-[400px]">
-                            <div className="flex flex-col items-center gap-3">
-                                <div className="w-10 h-10 border-4 border-gray-100 border-t-[#00c950] rounded-full animate-spin"></div>
-                                <p className="text-sm font-medium text-gray-500">Loading transactions...</p>
-                            </div>
+                            <Loader size="lg" message="Loading transactions..." />
                         </div>
                     )}
                     <TransactionTable

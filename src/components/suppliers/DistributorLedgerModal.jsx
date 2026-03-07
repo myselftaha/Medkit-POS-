@@ -7,6 +7,7 @@ import ReceiveStockModal from './ReceiveStockModal';
 import PurchaseOrderModal from './PurchaseOrderModal';
 import { ShoppingCart, CheckCircle, XCircle, Trash2 } from 'lucide-react';
 import ConfirmationModal from '../common/ConfirmationModal';
+import Loader from '../common/Loader';
 
 const DistributorLedgerModal = ({ isOpen, onClose, supplier, onUpdate }) => {
     const { showToast } = useToast();
@@ -237,8 +238,7 @@ const DistributorLedgerModal = ({ isOpen, onClose, supplier, onUpdate }) => {
                     {/* Content Section */}
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-20 bg-white rounded-lg border border-gray-200">
-                            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#00c950]"></div>
-                            <p className="text-sm text-gray-500 mt-4">Loading ledger...</p>
+                            <Loader size="lg" message="Loading ledger..." />
                         </div>
                     ) : (
                         <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">

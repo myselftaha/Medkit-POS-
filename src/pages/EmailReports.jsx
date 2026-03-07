@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext';
 import {
     Mail, Send, TrendingUp, AlertTriangle, Calendar, Package,
-    FileText, RotateCcw, CheckCircle, XCircle, Loader, ChevronLeft
+    FileText, RotateCcw, CheckCircle, XCircle, ChevronLeft
 } from 'lucide-react';
+import Loader from '../components/common/Loader';
 
 const EmailReports = () => {
     const navigate = useNavigate();
@@ -223,7 +224,7 @@ const EmailReports = () => {
                                     >
                                         {isSending ? (
                                             <>
-                                                <Loader size={18} className="animate-spin" />
+                                                <Loader size="xs" compact inline />
                                                 <span>Sending...</span>
                                             </>
                                         ) : (

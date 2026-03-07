@@ -5,6 +5,7 @@ import AddVoucherModal from '../components/vouchers/AddVoucherModal';
 import EditVoucherModal from '../components/vouchers/EditVoucherModal';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import API_URL from '../config/api';
+import Loader from '../components/common/Loader';
 
 
 const Vouchers = () => {
@@ -235,7 +236,9 @@ const Vouchers = () => {
 
             {/* Loading State */}
             {loading ? (
-                <div className="text-center py-12 text-gray-500">Loading vouchers...</div>
+                <div className="py-12">
+                    <Loader size="lg" message="Loading vouchers..." />
+                </div>
             ) : (
                 <>
                     {/* Vouchers Grid */}

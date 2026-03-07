@@ -9,13 +9,13 @@ import EditInventoryModal from '../components/inventory/EditInventoryModal';
 import API_URL from '../config/api';
 import { useSettings } from '../context/SettingsContext';
 import { downloadRowsAsCsv } from '../utils/excelUtils';
+import Loader from '../components/common/Loader';
 
 // ... (rest of imports)
 
 const Inventory = () => {
     const navigate = useNavigate();
     const [medicines, setMedicines] = useState([]);
-    const [supplies, setSupplies] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState('all');
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -58,10 +58,7 @@ const Inventory = () => {
     useEffect(() => {
         const loadInitialData = async () => {
             const loadedMedicines = await fetchMedicines();
-            await Promise.all([
-                fetchSupplies(),
-                fetchEnrichedLowStock(loadedMedicines)
-            ]);
+            await fetchEnrichedLowStock(loadedMedicines);
         };
         loadInitialData();
     }, []);
@@ -79,18 +76,6 @@ const Inventory = () => {
             console.error('Error fetching medicines:', error);
             showToast('Failed to fetch inventory', 'error');
             return [];
-        }
-    };
-
-    const fetchSupplies = async () => {
-        try {
-            const response = await fetch(`${API_URL}/api/supplies?limit=1000`, { // Fetch more for overview
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-            });
-            const data = await response.json();
-            setSupplies(data.data || []);
-        } catch (error) {
-            console.error('Error fetching supplies:', error);
         }
     };
 
@@ -174,11 +159,7 @@ const Inventory = () => {
 
             if (response.ok) {
                 // Refresh all related data
-                await Promise.all([
-                    fetchMedicines(),
-                    fetchSupplies(),
-                    fetchEnrichedLowStock()
-                ]);
+                await Promise.all([fetchMedicines(), fetchEnrichedLowStock()]);
                 setIsAddModalOpen(false);
                 showToast('Product added to inventory successfully!', 'success');
             } else {
@@ -204,11 +185,7 @@ const Inventory = () => {
 
             if (response.ok) {
                 // Refresh all related data
-                await Promise.all([
-                    fetchMedicines(),
-                    fetchSupplies(),
-                    fetchEnrichedLowStock()
-                ]);
+                await Promise.all([fetchMedicines(), fetchEnrichedLowStock()]);
                 setIsEditModalOpen(false);
                 showToast('Inventory updated successfully!', 'success');
             } else {
@@ -815,7 +792,7 @@ const Inventory = () => {
                 {activeTab === 'ai-alerts' && (
                     !aiData ? (
                         <div className="flex justify-center p-12">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                            <Loader size="md" message="Preparing AI insights..." />
                         </div>
                     ) : (
                         <>

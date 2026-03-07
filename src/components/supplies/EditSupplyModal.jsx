@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, FileText, Package, DollarSign, Settings, Info, Percent } from 'lucide-react';
+import Loader from '../common/Loader';
 
 const EditSupplyModal = ({ isOpen, onClose, onSave, supply, suppliers = [] }) => {
     const [submitting, setSubmitting] = useState(false);
@@ -482,7 +483,12 @@ const EditSupplyModal = ({ isOpen, onClose, onSave, supply, suppliers = [] }) =>
                         disabled={submitting}
                         className="px-5 py-2.5 rounded-lg bg-[#00c950] text-white font-medium hover:bg-[#00b347] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-[#00c950]/20"
                     >
-                        {submitting ? 'Saving...' : 'Update Supply Record'}
+                        {submitting ? (
+                            <>
+                                <Loader size="xs" compact inline />
+                                Saving...
+                            </>
+                        ) : 'Update Supply Record'}
                     </button>
                 </div>
             </div>

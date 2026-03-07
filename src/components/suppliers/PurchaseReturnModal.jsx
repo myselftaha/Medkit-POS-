@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Search, Package, AlertCircle, Trash2, ArrowLeftRight, Calendar, Info } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import API_URL from '../../config/api';
+import Loader from '../common/Loader';
 
 const PurchaseReturnModal = ({ isOpen, onClose, supplierId, supplierName, onSuccess }) => {
     const { showToast } = useToast();
@@ -292,9 +293,14 @@ const PurchaseReturnModal = ({ isOpen, onClose, supplierId, supplierName, onSucc
                             <button
                                 onClick={handleSubmit}
                                 disabled={loading || returnItems.length === 0}
-                                className="flex-[2] px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                                className="flex-[2] px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
                             >
-                                {loading ? 'Processing...' : 'Authorize Return'}
+                                {loading ? (
+                                    <>
+                                        <Loader size="xs" compact inline />
+                                        Processing...
+                                    </>
+                                ) : 'Authorize Return'}
                             </button>
                         </div>
                     </div>

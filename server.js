@@ -123,7 +123,7 @@ app.use(async (req, res, next) => {
         if (process.env.VERCEL) {
             await connectDB();
         }
-        if (process.env.NODE_ENV !== 'production' || process.env.DEBUG_REQUESTS === 'true') {
+        if (process.env.DEBUG_REQUESTS === 'true') {
             console.log(`[DEBUG] Request: ${req.method} ${req.url}`);
         }
         next();
@@ -646,6 +646,13 @@ const medicineSchema = new mongoose.Schema({
     igstPercentage: { type: Number, default: 0 }
 });
 
+medicineSchema.index({ status: 1, inInventory: 1, name: 1 });
+medicineSchema.index({ formulaCode: 1 });
+medicineSchema.index({ genericName: 1 });
+medicineSchema.index({ id: 1 });
+medicineSchema.index({ boxNumber: 1 });
+medicineSchema.index({ 'barcodes.code': 1 });
+
 const Medicine = mongoose.model('Medicine', medicineSchema);
 
 // Customer Schema
@@ -730,6 +737,9 @@ const transactionSchema = new mongoose.Schema({
     processedBy: { type: String, default: 'Admin' },
     createdAt: { type: Date, default: Date.now }
 });
+
+transactionSchema.index({ createdAt: -1 });
+transactionSchema.index({ type: 1, createdAt: -1 });
 
 const Transaction = mongoose.model('Transaction', transactionSchema);
 
@@ -2593,8 +2603,12 @@ app.get('/api/medicines/low-stock/legacy', async (req, res) => {
 // Search medicines (Server-side search for POS)
 app.get('/api/medicines/search', async (req, res) => {
     try {
-        const { q, category, page = 1, limit = 50 } = req.query;
+        const { q, category, page = 1, limit = 50, includeTotal = 'false' } = req.query;
         const baseQuery = { status: 'Active', inInventory: true }; // Only show sellable items
+        const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+        const safePage = Math.max(parseInt(page, 10) || 1, 1);
+        const shouldIncludeTotal = includeTotal === 'true';
+        const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
         if (category && category !== 'All') {
             baseQuery.category = category;
@@ -2602,7 +2616,8 @@ app.get('/api/medicines/search', async (req, res) => {
         const finalQuery = { ...baseQuery };
 
         if (q) {
-            const searchRegex = new RegExp(q, 'i');
+            const cleanedQuery = String(q).trim();
+            const searchRegex = new RegExp(escapeRegex(cleanedQuery), 'i');
             const searchConditions = [
                 { name: searchRegex },
                 { genericName: searchRegex },
@@ -2611,29 +2626,31 @@ app.get('/api/medicines/search', async (req, res) => {
                 { 'barcodes.code': searchRegex }
             ];
 
-            if (!isNaN(q)) {
-                searchConditions.push({ id: parseInt(q) });
+            if (!isNaN(cleanedQuery)) {
+                searchConditions.push({ id: parseInt(cleanedQuery, 10) });
                 searchConditions.push({ boxNumber: searchRegex });
             }
 
             finalQuery.$or = searchConditions;
         }
 
-        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const skip = (safePage - 1) * safeLimit;
+        const projection = 'id name genericName formulaCode sku stock packSize mrp price sellingPrice shelfLocation inInventory status barcodes boxNumber unit';
+        const medicinesPromise = Medicine.find(finalQuery)
+            .select(projection)
+            .sort({ name: 1 })
+            .skip(skip)
+            .limit(safeLimit)
+            .lean();
 
-        const [medicines, total] = await Promise.all([
-            Medicine.find(finalQuery)
-                .sort({ name: 1 })
-                .skip(skip)
-                .limit(parseInt(limit)),
-            Medicine.countDocuments(finalQuery)
-        ]);
+        const totalPromise = shouldIncludeTotal ? Medicine.countDocuments(finalQuery) : Promise.resolve(null);
+        const [medicines, total] = await Promise.all([medicinesPromise, totalPromise]);
 
         res.json({
             medicines,
-            total,
-            page: parseInt(page),
-            totalPages: Math.ceil(total / parseInt(limit))
+            total: total ?? medicines.length,
+            page: safePage,
+            totalPages: shouldIncludeTotal && total !== null ? Math.ceil(total / safeLimit) : null
         });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -2643,37 +2660,60 @@ app.get('/api/medicines/search', async (req, res) => {
 // Get all medicines (Enriched for Inventory)
 app.get('/api/medicines', async (req, res) => {
     try {
-        const { page = 1, limit = 50, category, status, searchQuery } = req.query;
+        const {
+            page = 1,
+            limit = 50,
+            category,
+            status,
+            searchQuery,
+            inInventory,
+            fields = 'full',
+            includeTotal = 'true'
+        } = req.query;
         let query = {};
+        const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 10000);
+        const safePage = Math.max(parseInt(page, 10) || 1, 1);
+        const shouldIncludeTotal = includeTotal !== 'false';
+        const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
         if (category && category !== 'All') query.category = category;
         if (status && status !== 'All') query.status = status;
+        if (inInventory === 'true' || inInventory === 'false') {
+            query.inInventory = inInventory === 'true';
+        }
         if (searchQuery) {
+            const cleanedQuery = String(searchQuery).trim();
+            const safeRegex = new RegExp(escapeRegex(cleanedQuery), 'i');
             query.$or = [
-                { name: { $regex: searchQuery, $options: 'i' } },
-                { formulaCode: { $regex: searchQuery, $options: 'i' } },
-                { genericName: { $regex: searchQuery, $options: 'i' } }
+                { name: safeRegex },
+                { formulaCode: safeRegex },
+                { genericName: safeRegex }
             ];
-            if (!isNaN(searchQuery)) query.id = parseInt(searchQuery);
+            if (!isNaN(cleanedQuery)) query.id = parseInt(cleanedQuery, 10);
         }
 
-        const pageNum = parseInt(page);
-        const limitNum = parseInt(limit);
-        const skip = (pageNum - 1) * limitNum;
+        const projectionByFieldPreset = {
+            dashboard: 'id name category stock packSize reorderLevel minStock expiryDate price sellingPrice',
+            inventory: 'id name category stock packSize reorderLevel minStock expiryDate price sellingPrice costPrice status inInventory formulaCode genericName boxNumber'
+        };
+        const projection = projectionByFieldPreset[fields] || null;
+        const skip = (safePage - 1) * safeLimit;
 
-        const total = await Medicine.countDocuments(query);
-        const medicines = await Medicine.find(query)
+        const medicinesPromise = Medicine.find(query, projection)
             .sort({ name: 1 })
             .skip(skip)
-            .limit(limitNum);
+            .limit(safeLimit)
+            .lean();
+        const totalPromise = shouldIncludeTotal ? Medicine.countDocuments(query) : Promise.resolve(null);
+        const [medicines, total] = await Promise.all([medicinesPromise, totalPromise]);
 
         res.json({
             data: medicines,
             pagination: {
-                total,
-                page: pageNum,
-                pages: Math.ceil(total / limitNum),
-                limit: limitNum
+                total: total ?? medicines.length,
+                page: safePage,
+                pages: shouldIncludeTotal && total !== null ? Math.ceil(total / safeLimit) : null,
+                limit: safeLimit
             }
         });
     } catch (err) {
@@ -4844,8 +4884,14 @@ app.get('/api/transactions', async (req, res) => {
             startDate, endDate, range, searchQuery,
             page = 1, limit = 50,
             paymentMethod, status, cashier, type,
-            minAmount, maxAmount
+            minAmount, maxAmount,
+            fields = 'full',
+            includeTotal = 'true'
         } = req.query;
+        const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 5000);
+        const safePage = Math.max(parseInt(page, 10) || 1, 1);
+        const shouldIncludeTotal = includeTotal !== 'false';
+        const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
         let query = {};
 
@@ -4856,12 +4902,14 @@ app.get('/api/transactions', async (req, res) => {
 
         // Search filtering
         if (searchQuery) {
+            const cleanedQuery = String(searchQuery).trim();
+            const safeRegex = new RegExp(escapeRegex(cleanedQuery), 'i');
             query.$or = [
-                { transactionId: { $regex: searchQuery, $options: 'i' } },
-                { invoiceNumber: { $regex: searchQuery, $options: 'i' } },
-                { 'customer.name': { $regex: searchQuery, $options: 'i' } },
+                { transactionId: safeRegex },
+                { invoiceNumber: safeRegex },
+                { 'customer.name': safeRegex },
                 // If query is numeric, also search by billNumber
-                ...(!isNaN(searchQuery) && searchQuery.trim() !== '' ? [{ billNumber: parseInt(searchQuery) }] : [])
+                ...(!isNaN(cleanedQuery) && cleanedQuery !== '' ? [{ billNumber: parseInt(cleanedQuery, 10) }] : [])
             ];
         }
 
@@ -4878,24 +4926,26 @@ app.get('/api/transactions', async (req, res) => {
         }
 
         // Pagination options
-        const pageNum = parseInt(page);
-        const limitNum = parseInt(limit);
-        const skip = (pageNum - 1) * limitNum;
-
-        // Execute query
-        const totalDocs = await Transaction.countDocuments(query);
-        const transactions = await Transaction.find(query)
+        const skip = (safePage - 1) * safeLimit;
+        const projectionByFieldPreset = {
+            dashboard: 'transactionId customer.name total type createdAt items.name items.quantity items.price items.id'
+        };
+        const projection = projectionByFieldPreset[fields] || null;
+        const transactionsPromise = Transaction.find(query, projection)
             .sort({ createdAt: -1 })
             .skip(skip)
-            .limit(limitNum);
+            .limit(safeLimit)
+            .lean();
+        const totalDocsPromise = shouldIncludeTotal ? Transaction.countDocuments(query) : Promise.resolve(null);
+        const [transactions, totalDocs] = await Promise.all([transactionsPromise, totalDocsPromise]);
 
         res.json({
             data: transactions,
             pagination: {
-                total: totalDocs,
-                page: pageNum,
-                pages: Math.ceil(totalDocs / limitNum),
-                limit: limitNum
+                total: totalDocs ?? transactions.length,
+                page: safePage,
+                pages: shouldIncludeTotal && totalDocs !== null ? Math.ceil(totalDocs / safeLimit) : null,
+                limit: safeLimit
             }
         });
     } catch (err) {
@@ -5956,10 +6006,14 @@ app.post('/api/seed', authenticateToken, async (req, res) => {
 // Dashboard Stats Endpoint (Optimized with Aggregation)
 app.get('/api/dashboard/stats', async (req, res) => {
     try {
-        const { startDate, endDate } = req.query;
+        const { startDate, endDate, expiryAlertDays: expiryAlertDaysQuery } = req.query;
         let dateQuery = {};
-        const settings = await Settings.findOne({}, { lowStockThreshold: 1 }).lean();
+        const settings = await Settings.findOne({}, { lowStockThreshold: 1, expiryAlertDays: 1 }).lean();
         const globalLowStockThreshold = Number(settings?.lowStockThreshold) || 10;
+        const expiryAlertDays = Number(expiryAlertDaysQuery) || Number(settings?.expiryAlertDays) || 30;
+        const today = new Date();
+        const expiryCutoff = new Date();
+        expiryCutoff.setDate(today.getDate() + expiryAlertDays);
 
         if (startDate || endDate) {
             dateQuery.createdAt = {};
@@ -5972,7 +6026,7 @@ app.get('/api/dashboard/stats', async (req, res) => {
         }
 
         // Optimized Aggregations
-        const [salesStats, expenseStats, medStats, lowStockCount] = await Promise.all([
+        const [salesStats, expenseStats, medStats, lowStockCount, payablesStats, expiryStats] = await Promise.all([
             // Sales & Returns Aggregation
             Transaction.aggregate([
                 { $match: dateQuery },
@@ -6046,13 +6100,61 @@ app.get('/api/dashboard/stats', async (req, res) => {
                         }
                     ]
                 }
-            })
+            }),
+            Supplier.aggregate([
+                {
+                    $group: {
+                        _id: null,
+                        totalPayables: {
+                            $sum: {
+                                $max: [{ $ifNull: ['$totalPayable', 0] }, 0]
+                            }
+                        }
+                    }
+                }
+            ]),
+            Medicine.aggregate([
+                {
+                    $match: {
+                        inInventory: true,
+                        status: 'Active',
+                        expiryDate: { $gte: today, $lte: expiryCutoff }
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        count: { $sum: 1 },
+                        value: {
+                            $sum: {
+                                $multiply: [
+                                    {
+                                        $divide: [
+                                            '$stock',
+                                            {
+                                                $cond: [
+                                                    { $gt: [{ $ifNull: ['$packSize', 1] }, 0] },
+                                                    { $ifNull: ['$packSize', 1] },
+                                                    1
+                                                ]
+                                            }
+                                        ]
+                                    },
+                                    { $ifNull: ['$price', { $ifNull: ['$sellingPrice', 0] }] }
+                                ]
+                            }
+                        }
+                    }
+                }
+            ])
         ]);
 
         const sales = salesStats.find(s => s._id === 'Sale') || { total: 0, count: 0, subtotal: 0 };
         const returns = salesStats.find(s => s._id === 'Return') || { total: 0, count: 0, subtotal: 0 };
         const expenses = expenseStats[0] || { total: 0 };
         const inventory = medStats[0] || { totalRetailValue: 0, totalCostValue: 0, totalItems: 0 };
+        const payables = payablesStats[0] || { totalPayables: 0 };
+        const expiry = expiryStats[0] || { count: 0, value: 0 };
 
         // Calculate Profit (Simple estimation for dashboard)
         const netSales = sales.total - Math.abs(returns.total);
@@ -6074,7 +6176,10 @@ app.get('/api/dashboard/stats', async (req, res) => {
                 inventoryRetail: inventory.totalRetailValue,
                 inventoryCost: inventory.totalCostValue,
                 lowStock: lowStockCount,
-                itemsCount: inventory.totalItems
+                itemsCount: inventory.totalItems,
+                totalPayables: payables.totalPayables,
+                expiryCount: expiry.count,
+                expiryValue: expiry.value
             }
         });
     } catch (err) {

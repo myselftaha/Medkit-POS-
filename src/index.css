@@ -44,6 +44,134 @@
   animation: wave 1.2s ease-in-out infinite;
 }
 
+/* Master Brand Loader */
+@keyframes master-loader-orbit {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes master-loader-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@keyframes master-loader-scan {
+  0%, 100% {
+    transform: translateY(-130%);
+    opacity: 0;
+  }
+  50% {
+    transform: translateY(130%);
+    opacity: 1;
+  }
+}
+
+@keyframes master-loader-dot {
+  0%, 100% {
+    opacity: 0.25;
+    transform: scale(0.7);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.master-loader {
+  position: relative;
+  width: var(--loader-size);
+  height: var(--loader-size);
+}
+
+.master-loader-orbit {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: max(2px, calc(var(--loader-size) / 16)) solid rgba(16, 185, 129, 0.12);
+  border-top-color: rgba(16, 185, 129, 0.95);
+  border-right-color: rgba(16, 185, 129, 0.55);
+  animation: master-loader-orbit 1s linear infinite;
+}
+
+.master-loader-core {
+  position: absolute;
+  inset: 18%;
+  display: grid;
+  place-items: center;
+  border-radius: 22%;
+  background: linear-gradient(135deg, #00c950, #0ea35f);
+  box-shadow:
+    0 12px 24px rgba(16, 185, 129, 0.28),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+  animation: master-loader-pulse 1.5s ease-in-out infinite;
+}
+
+.master-loader-logo {
+  position: relative;
+  width: 56%;
+  height: 56%;
+  border-radius: 22%;
+  background: rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+.master-loader-plus-h,
+.master-loader-plus-v {
+  position: absolute;
+  background: #ffffff;
+  border-radius: 9999px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.master-loader-plus-h {
+  width: 62%;
+  height: 16%;
+}
+
+.master-loader-plus-v {
+  width: 16%;
+  height: 62%;
+}
+
+.master-loader-scan {
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  height: 18%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.92), transparent);
+  animation: master-loader-scan 1.8s ease-in-out infinite;
+}
+
+.master-loader-dot {
+  position: absolute;
+  width: max(4px, calc(var(--loader-size) / 9));
+  height: max(4px, calc(var(--loader-size) / 9));
+  border-radius: 9999px;
+  background: #00c950;
+  animation: master-loader-dot 1.3s ease-in-out infinite;
+}
+
+.master-loader-dot-a {
+  top: 7%;
+  right: 7%;
+}
+
+.master-loader-dot-b {
+  bottom: 7%;
+  left: 7%;
+  animation-delay: 0.28s;
+}
+
 /* Hide scrollbars completely while maintaining scroll functionality */
 .scrollbar-hide {
   -ms-overflow-style: none !important;

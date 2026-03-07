@@ -6,10 +6,12 @@ import App from './App.jsx'
 
 import { ToastProvider } from './context/ToastContext'
 
+const appTree = (
+  <ToastProvider>
+    <App />
+  </ToastProvider>
+)
+
 createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <ToastProvider>
-      <App />
-    </ToastProvider>
-  </StrictMode>,
+  import.meta.env.DEV ? appTree : <StrictMode>{appTree}</StrictMode>,
 )

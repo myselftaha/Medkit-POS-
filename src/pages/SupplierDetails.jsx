@@ -8,6 +8,7 @@ import PurchaseReturnModal from '../components/suppliers/PurchaseReturnModal';
 import CashRefundModal from '../components/suppliers/CashRefundModal';
 import ConfirmationModal from '../components/common/ConfirmationModal';
 import API_URL from '../config/api';
+import Loader from '../components/common/Loader';
 
 
 const SupplierDetails = () => {
@@ -267,7 +268,7 @@ const SupplierDetails = () => {
         }
     };
 
-    if (loading) return <div className="p-8 text-center text-gray-500">Loading details...</div>;
+    if (loading) return <div className="p-8"><Loader size="lg" message="Loading supplier details..." /></div>;
     if (!supplier) return <div className="p-8 text-center text-red-500">Supplier not found</div>;
 
     return (

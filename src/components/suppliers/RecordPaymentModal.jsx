@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import API_URL from '../../config/api';
 import { useToast } from '../../context/ToastContext';
+import Loader from '../common/Loader';
 
 const RecordPaymentModal = ({ isOpen, onClose, onSuccess, supplier }) => {
     const { showToast } = useToast();
@@ -174,9 +175,14 @@ const RecordPaymentModal = ({ isOpen, onClose, onSuccess, supplier }) => {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="flex-1 px-6 py-2.5 bg-[#00c950] hover:bg-[#00b347] text-white rounded-lg font-medium text-sm transition-all shadow-sm disabled:opacity-50"
+                            className="flex-1 px-6 py-2.5 bg-[#00c950] hover:bg-[#00b347] text-white rounded-lg font-medium text-sm transition-all shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
                         >
-                            {loading ? 'Recording...' : 'Record Payment'}
+                            {loading ? (
+                                <>
+                                    <Loader size="xs" compact inline />
+                                    Recording...
+                                </>
+                            ) : 'Record Payment'}
                         </button>
                     </div>
                 </form>

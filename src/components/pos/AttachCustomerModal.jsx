@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Search, User, Mail, Phone } from 'lucide-react';
 import API_URL from '../../config/api';
+import Loader from '../common/Loader';
 
 const AttachCustomerModal = ({ isOpen, onClose, onSelectCustomer }) => {
     const [customers, setCustomers] = useState([]);
@@ -125,7 +126,7 @@ const AttachCustomerModal = ({ isOpen, onClose, onSelectCustomer }) => {
                 {/* Customer List */}
                 <div className="flex-1 overflow-y-auto p-4" ref={listRef}>
                     {loading ? (
-                        <div className="text-center py-12 text-gray-500">Loading customers...</div>
+                        <Loader size="lg" message="Loading customers..." />
                     ) : filteredCustomers.length === 0 ? (
                         <div className="text-center py-12 text-gray-500">
                             {searchQuery ? 'No customers found matching your search' : 'No customers available'}

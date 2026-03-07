@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Lock, ShieldCheck, Loader2 } from 'lucide-react';
+import { User, Lock, ShieldCheck } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 import API_URL from '../config/api';
+import Loader from '../components/common/Loader';
 
 
 const OwnerSetup = ({ onComplete }) => {
@@ -76,7 +77,7 @@ const OwnerSetup = ({ onComplete }) => {
     if (checking) {
         return (
             <div className="min-h-screen bg-[#0f172a] flex items-center justify-center">
-                <Loader2 className="animate-spin text-green-500" size={48} />
+                <Loader size="lg" />
             </div>
         );
     }
@@ -164,7 +165,7 @@ const OwnerSetup = ({ onComplete }) => {
                         disabled={loading}
                         className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-lg shadow-green-600/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-70 mt-4"
                     >
-                        {loading ? <Loader2 className="animate-spin" size={20} /> : 'Complete Setup & Lock System'}
+                        {loading ? <Loader size="xs" compact inline /> : 'Complete Setup & Lock System'}
                     </button>
 
                     <p className="text-[10px] text-gray-400 text-center uppercase font-bold tracking-widest mt-4">

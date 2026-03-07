@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Loader2, UserPlus } from 'lucide-react';
+import { Search, UserPlus } from 'lucide-react';
 import UserTable from '../components/users/UserTable';
 import AddUserModal from '../components/users/AddUserModal';
 import EditUserModal from '../components/users/EditUserModal';
 import ResetPasswordModal from '../components/users/ResetPasswordModal';
 import { useToast } from '../context/ToastContext';
 import API_URL from '../config/api';
+import Loader from '../components/common/Loader';
 
 
 const Users = () => {
@@ -185,8 +186,7 @@ const Users = () => {
 
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-20 bg-white rounded-xl border border-gray-100 shadow-sm">
-                    <Loader2 className="animate-spin text-green-600 mb-3" size={40} />
-                    <p className="text-gray-500 font-medium">Fetching secure user list...</p>
+                    <Loader size="lg" message="Fetching secure user list..." />
                 </div>
             ) : (
                 <div className="space-y-4">
