@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken';
 import cron from 'node-cron';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import * as emailService from './services/emailService.js';
 import * as whatsappClient from './services/whatsappClient.js';
@@ -79,11 +80,21 @@ const getDateFilter = (range, customStart, customEnd) => {
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+app.set('trust proxy', 1);
 
 const ADMIN_ROLES = ['Admin', 'Super Admin', 'Owner'];
 const MANAGEMENT_ROLES = [...ADMIN_ROLES, 'Store Manager', 'Accountant'];
 const PHARMACY_ROLES = [...MANAGEMENT_ROLES, 'Pharmacist'];
 const SALES_ROLES = [...PHARMACY_ROLES, 'Counter Salesman'];
+const AUTHENTICATED_ROLES = [...new Set([...SALES_ROLES, 'Helper / Peon'])];
+const LEGACY_ROLE_ALIASES = Object.freeze({
+    'Salesman / Counter Staff': 'Counter Salesman',
+    Cashier: 'Counter Salesman',
+    'Store Keeper': 'Helper / Peon',
+    'Delivery Rider': 'Counter Salesman'
+});
+
+const normalizeUserRole = (role) => LEGACY_ROLE_ALIASES[role] || role;
 
 const parseAllowedOrigins = () => {
     const configured = (process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -134,6 +145,102 @@ app.use(async (req, res, next) => {
 });
 
 const JWT_SECRET = process.env.JWT_SECRET;
+const ENCRYPTED_VALUE_PREFIX = 'enc:v1';
+const SETTINGS_ENCRYPTION_KEY = process.env.SECRETS_ENCRYPTION_KEY
+    ? crypto.createHash('sha256').update(process.env.SECRETS_ENCRYPTION_KEY).digest()
+    : null;
+let hasWarnedMissingEncryptionKey = false;
+
+const toPlainObject = (value) => {
+    if (!value) return null;
+    return value.toObject ? value.toObject() : { ...value };
+};
+
+const isEncryptedSecret = (value) =>
+    typeof value === 'string' && value.startsWith(`${ENCRYPTED_VALUE_PREFIX}:`);
+
+const warnMissingEncryptionKey = () => {
+    if (hasWarnedMissingEncryptionKey || SETTINGS_ENCRYPTION_KEY) return;
+    hasWarnedMissingEncryptionKey = true;
+    console.warn('[SECURITY] SECRETS_ENCRYPTION_KEY not set. Sensitive settings will be stored as plain text.');
+};
+
+const encryptSecret = (plainValue) => {
+    const value = String(plainValue ?? '').trim();
+    if (!value) return '';
+    if (isEncryptedSecret(value)) return value;
+    if (!SETTINGS_ENCRYPTION_KEY) {
+        warnMissingEncryptionKey();
+        return value;
+    }
+
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', SETTINGS_ENCRYPTION_KEY, iv);
+    const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    return `${ENCRYPTED_VALUE_PREFIX}:${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+};
+
+const decryptSecret = (storedValue) => {
+    if (!storedValue || typeof storedValue !== 'string') return '';
+    if (!isEncryptedSecret(storedValue)) return storedValue;
+    if (!SETTINGS_ENCRYPTION_KEY) {
+        warnMissingEncryptionKey();
+        return '';
+    }
+
+    try {
+        const [, ivHex, authTagHex, encryptedHex] = storedValue.split(':');
+        if (!ivHex || !authTagHex || !encryptedHex) return '';
+
+        const decipher = crypto.createDecipheriv(
+            'aes-256-gcm',
+            SETTINGS_ENCRYPTION_KEY,
+            Buffer.from(ivHex, 'hex')
+        );
+        decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+        const decrypted = Buffer.concat([
+            decipher.update(Buffer.from(encryptedHex, 'hex')),
+            decipher.final()
+        ]);
+        return decrypted.toString('utf8');
+    } catch (err) {
+        console.error('[SECURITY] Failed to decrypt secret value:', err.message);
+        return '';
+    }
+};
+
+const sanitizeSettingsForClient = (settings) => {
+    const obj = toPlainObject(settings) || {};
+    const hasSmtpPassword = Boolean(obj.smtpPassword);
+    delete obj.smtpPassword;
+    obj.smtpPasswordConfigured = hasSmtpPassword;
+    return obj;
+};
+
+const hydrateSettingsSecrets = (settings) => {
+    const obj = toPlainObject(settings) || {};
+    if (Object.prototype.hasOwnProperty.call(obj, 'smtpPassword')) {
+        obj.smtpPassword = decryptSecret(obj.smtpPassword);
+    }
+    return obj;
+};
+
+const prepareSettingsUpdatePayload = (incoming = {}) => {
+    const payload = { ...incoming };
+    delete payload.smtpPasswordConfigured;
+
+    if (Object.prototype.hasOwnProperty.call(payload, 'smtpPassword')) {
+        const nextPassword = String(payload.smtpPassword ?? '').trim();
+        if (!nextPassword || nextPassword === '********') {
+            delete payload.smtpPassword;
+        } else {
+            payload.smtpPassword = encryptSecret(nextPassword);
+        }
+    }
+
+    return payload;
+};
 
 // User Schema
 const userSchema = new mongoose.Schema({
@@ -146,6 +253,7 @@ const userSchema = new mongoose.Schema({
     },
     permissions: { type: [String], default: [] },
     status: { type: String, enum: ['Active', 'Deactivated'], default: 'Active' },
+    tokenVersion: { type: Number, default: 0 },
     lastLogin: Date,
     createdAt: { type: Date, default: Date.now }
 });
@@ -153,7 +261,7 @@ const userSchema = new mongoose.Schema({
 const User = mongoose.model('User', userSchema);
 
 // Auth & Security Middlewares
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
@@ -162,24 +270,52 @@ const authenticateToken = (req, res, next) => {
         return res.status(401).json({ message: 'Authentication required' });
     }
 
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) {
-            console.error(`[AUTH] Token verification failed for ${req.url}:`, err.message);
-            return res.status(403).json({ message: 'Invalid or expired token' });
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const user = await User.findById(decoded.id).select('username role status permissions tokenVersion');
+        if (!user) {
+            return res.status(401).json({ message: 'Authentication required' });
         }
-        req.user = user;
+        if (user.status !== 'Active') {
+            return res.status(403).json({ message: 'Account is deactivated' });
+        }
+
+        const normalizedRole = normalizeUserRole(user.role);
+        if (!AUTHENTICATED_ROLES.includes(normalizedRole)) {
+            console.warn(`[AUTH] Unsupported role '${user.role}' for ${req.url}`);
+            return res.status(403).json({ message: 'Forbidden: Invalid role' });
+        }
+
+        const tokenVersion = Number.isInteger(decoded.tokenVersion) ? decoded.tokenVersion : 0;
+        const currentTokenVersion = Number.isInteger(user.tokenVersion) ? user.tokenVersion : 0;
+        if (tokenVersion !== currentTokenVersion) {
+            return res.status(401).json({ message: 'Authentication required' });
+        }
+
+        req.user = {
+            id: user._id.toString(),
+            username: user.username,
+            role: normalizedRole,
+            originalRole: user.role,
+            permissions: user.permissions || [],
+            tokenVersion: currentTokenVersion
+        };
         next();
-    });
+    } catch (err) {
+        console.error(`[AUTH] Token verification failed for ${req.url}:`, err.message);
+        return res.status(403).json({ message: 'Invalid or expired token' });
+    }
 };
 
 const authorizeRoles = (...roles) => {
+    const normalizedRoles = roles.map(normalizeUserRole);
     return (req, res, next) => {
         if (!req.user) {
             console.warn(`[AUTH] User not attached to request for ${req.url}`);
             return res.status(403).json({ message: 'Forbidden: No user data' });
         }
-        if (!roles.includes(req.user.role)) {
-            console.warn(`[AUTH] Role mismatch for ${req.url}. User Role: '${req.user.role}', Required: ${JSON.stringify(roles)}`);
+        if (!normalizedRoles.includes(req.user.role)) {
+            console.warn(`[AUTH] Role mismatch for ${req.url}. User Role: '${req.user.role}', Required: ${JSON.stringify(normalizedRoles)}`);
             return res.status(403).json({ message: `Forbidden: Insufficient permissions (Role: ${req.user.role})` });
         }
         next();
@@ -229,33 +365,61 @@ const PUBLIC_API_ROUTES = [
 ];
 
 const API_ROLE_RULES = [
+    // System & security
     { methods: ['GET', 'POST'], pattern: /^\/api\/system\/backups(?:\/[^/]+)?$/, roles: ADMIN_ROLES },
     { methods: ['POST'], pattern: /^\/api\/system\/backup$/, roles: ADMIN_ROLES },
     { methods: ['POST'], pattern: /^\/api\/system\/restore\/[^/]+$/, roles: ADMIN_ROLES },
     { methods: ['POST'], pattern: /^\/api\/system\/hard-reset$/, roles: ['Super Admin', 'Owner'] },
-    { methods: ['POST'], pattern: /^\/api\/settings$/, roles: ADMIN_ROLES },
-    { methods: ['POST'], pattern: /^\/api\/settings\/restore-defaults$/, roles: ADMIN_ROLES },
-    { methods: ['POST'], pattern: /^\/api\/settings\/inventory$/, roles: PHARMACY_ROLES },
-    { methods: ['PUT'], pattern: /^\/api\/settings\/inventory$/, roles: PHARMACY_ROLES },
-    { methods: ['GET', 'POST'], pattern: /^\/api\/email\/.+$/, roles: ADMIN_ROLES },
-    { methods: ['GET', 'POST'], pattern: /^\/api\/whatsapp\/.+$/, roles: ADMIN_ROLES },
-    { methods: ['DELETE'], pattern: /^\/api\/medicines\/delete-all$/, roles: ADMIN_ROLES },
     { methods: ['POST'], pattern: /^\/api\/seed$/, roles: ['Super Admin', 'Owner'] },
     { methods: ['POST'], pattern: /^\/api\/test\/low-stock\/[^/]+$/, roles: ADMIN_ROLES },
-    { methods: ['DELETE'], pattern: /^\/api\/suppliers\/[^/]+$/, roles: MANAGEMENT_ROLES },
-    { methods: ['POST'], pattern: /^\/api\/suppliers\/[^/]+\/clear-history$/, roles: MANAGEMENT_ROLES },
-    { methods: ['POST'], pattern: /^\/api\/suppliers\/[^/]+\/apply-credit$/, roles: MANAGEMENT_ROLES },
-    { methods: ['PUT'], pattern: /^\/api\/payments\/[^/]+\/clear-cheque$/, roles: MANAGEMENT_ROLES },
-    { methods: ['PUT'], pattern: /^\/api\/purchase-orders\/[^/]+\/status$/, roles: MANAGEMENT_ROLES },
-    { methods: ['POST'], pattern: /^\/api\/expiry\/dispose$/, roles: PHARMACY_ROLES },
-    { methods: ['POST'], pattern: /^\/api\/expiry\/send-alert$/, roles: MANAGEMENT_ROLES },
-    { methods: ['GET'], pattern: /^\/api\/dashboard\/stats$/, roles: MANAGEMENT_ROLES },
-    { methods: ['GET'], pattern: /^\/api\/transactions(?:\/stats\/summary|\/[^/]+)?$/, roles: SALES_ROLES },
-    { methods: ['POST'], pattern: /^\/api\/transactions$/, roles: SALES_ROLES },
-    { methods: ['POST'], pattern: /^\/api\/transactions\/sync$/, roles: SALES_ROLES },
+
+    // Settings
+    { methods: ['GET'], pattern: /^\/api\/settings$/, roles: AUTHENTICATED_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/settings$/, roles: ADMIN_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/settings\/restore-defaults$/, roles: ADMIN_ROLES },
+    { methods: ['GET', 'POST', 'PUT'], pattern: /^\/api\/settings\/inventory$/, roles: PHARMACY_ROLES },
+
+    // Auth, users, notifications
+    { methods: ['POST'], pattern: /^\/api\/auth\/verify-password$/, roles: AUTHENTICATED_ROLES },
+    { methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], pattern: /^\/api\/users(?:\/[^/]+(?:\/reset-password)?)?$/, roles: ADMIN_ROLES },
+    { methods: ['GET', 'POST', 'PUT'], pattern: /^\/api\/notifications(?:\/legacy)?(?:\/unread-count|\/mark-all-read|\/[^/]+\/read)?$/, roles: AUTHENTICATED_ROLES },
+
+    // POS & finance
+    { methods: ['GET', 'POST'], pattern: /^\/api\/transactions(?:\/stats\/summary|\/sync|\/[^/]+)?$/, roles: SALES_ROLES },
     { methods: ['POST'], pattern: /^\/api\/transactions\/[^/]+\/void$/, roles: MANAGEMENT_ROLES },
-    { methods: ['GET'], pattern: /^\/api\/expenses(?:\/[^/]+)?$/, roles: MANAGEMENT_ROLES },
-    { methods: ['GET'], pattern: /^\/api\/staff(?:\/[^/]+(?:\/(advances|payments|audit-logs))?)?$/, roles: MANAGEMENT_ROLES },
+    { methods: ['GET', 'POST', 'PUT'], pattern: /^\/api\/customers(?:\/[^/]+)?$/, roles: SALES_ROLES },
+    { methods: ['GET'], pattern: /^\/api\/vouchers(?:\/active)?$/, roles: SALES_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/vouchers\/validate$/, roles: SALES_ROLES },
+    { methods: ['PUT'], pattern: /^\/api\/vouchers\/[^/]+\/use$/, roles: SALES_ROLES },
+    { methods: ['POST', 'PUT', 'DELETE'], pattern: /^\/api\/vouchers(?:\/[^/]+(?:\/toggle-status)?)?$/, roles: MANAGEMENT_ROLES },
+
+    // Inventory domain
+    { methods: ['GET'], pattern: /^\/api\/medicines(?:\/.*)?$/, roles: SALES_ROLES },
+    { methods: ['POST', 'PUT', 'PATCH', 'DELETE'], pattern: /^\/api\/medicines(?:\/.*)?$/, roles: PHARMACY_ROLES },
+    { methods: ['GET', 'POST', 'PUT', 'DELETE'], pattern: /^\/api\/supplies(?:\/.*)?$/, roles: PHARMACY_ROLES },
+    { methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], pattern: /^\/api\/batches(?:\/.*)?$/, roles: PHARMACY_ROLES },
+    { methods: ['GET'], pattern: /^\/api\/inventory\/ai-low-stock$/, roles: PHARMACY_ROLES },
+
+    // Suppliers & procurement
+    { methods: ['GET', 'POST', 'PUT', 'DELETE'], pattern: /^\/api\/suppliers(?:\/.*)?$/, roles: MANAGEMENT_ROLES },
+    { methods: ['GET', 'POST', 'PUT', 'DELETE'], pattern: /^\/api\/purchase-orders(?:\/.*)?$/, roles: MANAGEMENT_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/purchase-returns$/, roles: MANAGEMENT_ROLES },
+    { methods: ['PUT'], pattern: /^\/api\/payments\/[^/]+\/clear-cheque$/, roles: MANAGEMENT_ROLES },
+
+    // Cash, staff, expense
+    { methods: ['GET', 'POST', 'PUT'], pattern: /^\/api\/cash-drawer(?:\/(status|open|close|reopen|logs|history))?$/, roles: MANAGEMENT_ROLES },
+    { methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], pattern: /^\/api\/expenses(?:\/legacy|\/[^/]+)?$/, roles: MANAGEMENT_ROLES },
+    { methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], pattern: /^\/api\/staff(?:\/.*)?$/, roles: MANAGEMENT_ROLES },
+
+    // Reporting & expiry
+    { methods: ['GET'], pattern: /^\/api\/dashboard\/stats$/, roles: MANAGEMENT_ROLES },
+    { methods: ['GET'], pattern: /^\/api\/reports(?:\/.*)?$/, roles: MANAGEMENT_ROLES },
+    { methods: ['POST'], pattern: /^\/api\/expiry\/send-alert$/, roles: MANAGEMENT_ROLES },
+    { methods: ['GET', 'POST'], pattern: /^\/api\/expiry(?:\/.*)?$/, roles: PHARMACY_ROLES },
+
+    // Integrations
+    { methods: ['GET', 'POST'], pattern: /^\/api\/email\/.+$/, roles: ADMIN_ROLES },
+    { methods: ['GET', 'POST'], pattern: /^\/api\/whatsapp\/.+$/, roles: ADMIN_ROLES },
 ];
 
 const getApiPath = (req) => `${req.baseUrl}${req.path}`;
@@ -270,14 +434,29 @@ app.use('/api', (req, res, next) => {
     return authenticateToken(req, res, next);
 });
 
-app.use('/api', (req, res, next) => {
-    const apiPath = getApiPath(req);
+const DEFAULT_READ_ROLE_POLICY = AUTHENTICATED_ROLES;
+const DEFAULT_WRITE_ROLE_POLICY = MANAGEMENT_ROLES;
+
+const resolveRolesForApiRequest = (req, apiPath) => {
     const matchedRule = API_ROLE_RULES.find(rule => rule.methods.includes(req.method) && rule.pattern.test(apiPath));
-    if (!matchedRule) return next();
+    if (matchedRule) return matchedRule.roles.map(normalizeUserRole);
+
+    if (req.method === 'GET' || req.method === 'HEAD') {
+        return DEFAULT_READ_ROLE_POLICY;
+    }
+
+    return DEFAULT_WRITE_ROLE_POLICY;
+};
+
+app.use('/api', (req, res, next) => {
+    if (isPublicApiRoute(req)) return next();
+    const apiPath = getApiPath(req);
+    const roles = resolveRolesForApiRequest(req, apiPath);
+    if (!roles || roles.length === 0) return next();
     if (!req.user) {
         return res.status(403).json({ message: 'Forbidden: Missing user context' });
     }
-    if (!matchedRule.roles.includes(req.user.role)) {
+    if (!roles.includes(req.user.role)) {
         return res.status(403).json({ message: `Forbidden: ${req.user.role} cannot access ${apiPath}` });
     }
     next();
@@ -933,6 +1112,24 @@ const settingsSchema = new mongoose.Schema({
 
 const Settings = mongoose.model('Settings', settingsSchema);
 
+const ensureEncryptedSettingsSecrets = async (settingsDoc) => {
+    if (!settingsDoc || !SETTINGS_ENCRYPTION_KEY) return settingsDoc;
+
+    if (settingsDoc.smtpPassword && !isEncryptedSecret(settingsDoc.smtpPassword)) {
+        settingsDoc.smtpPassword = encryptSecret(settingsDoc.smtpPassword);
+        await settingsDoc.save();
+    }
+
+    return settingsDoc;
+};
+
+const getSettingsForOperations = async () => {
+    const settingsDoc = await Settings.findOne();
+    if (!settingsDoc) return null;
+    await ensureEncryptedSettingsSecrets(settingsDoc);
+    return hydrateSettingsSecrets(settingsDoc);
+};
+
 // Notification Schema
 const notificationSchema = new mongoose.Schema({
     type: { type: String, enum: ['LOW_STOCK', 'EXPIRY', 'SYSTEM', 'SALE'], required: true },
@@ -963,7 +1160,8 @@ app.get('/api/settings', authenticateToken, async (req, res) => {
             console.log('Initialized default settings');
         }
 
-        res.json(settings);
+        await ensureEncryptedSettingsSecrets(settings);
+        res.json(sanitizeSettingsForClient(settings));
     } catch (err) {
         console.error('Error fetching settings:', err);
         res.status(500).json({ message: 'Error fetching settings' });
@@ -973,20 +1171,23 @@ app.get('/api/settings', authenticateToken, async (req, res) => {
 // Update settings
 app.post('/api/settings', authenticateToken, async (req, res) => {
     try {
+        const payload = prepareSettingsUpdatePayload(req.body || {});
         let settings = await Settings.findOne();
 
         if (!settings) {
-            settings = new Settings(req.body);
+            settings = new Settings(payload);
         } else {
             // Update fields
-            Object.assign(settings, req.body);
+            Object.assign(settings, payload);
         }
 
         settings.lastUpdated = new Date();
+        settings.updatedBy = req.user?.username || settings.updatedBy;
         // optionally set updatedBy from req.user
 
+        await ensureEncryptedSettingsSecrets(settings);
         await settings.save();
-        res.json({ message: 'Settings updated successfully', settings });
+        res.json({ message: 'Settings updated successfully', settings: sanitizeSettingsForClient(settings) });
     } catch (err) {
         console.error('Error updating settings:', err);
         res.status(500).json({ message: 'Error updating settings' });
@@ -999,7 +1200,7 @@ app.post('/api/settings/restore-defaults', authenticateToken, async (req, res) =
         await Settings.deleteMany({});
         const newSettings = new Settings();
         await newSettings.save();
-        res.json({ message: 'Settings restored to defaults', settings: newSettings });
+        res.json({ message: 'Settings restored to defaults', settings: sanitizeSettingsForClient(newSettings) });
     } catch (err) {
         console.error('Error restoring defaults:', err);
         res.status(500).json({ message: 'Error restoring defaults' });
@@ -1775,8 +1976,23 @@ app.post('/api/users/login', async (req, res) => {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
+        const normalizedRole = normalizeUserRole(user.role);
+        if (!AUTHENTICATED_ROLES.includes(normalizedRole)) {
+            recordLoginAttempt(req, username, false);
+            return res.status(403).json({ message: 'Role not allowed to sign in' });
+        }
+
+        if (normalizedRole !== user.role) {
+            user.role = normalizedRole;
+        }
+
         const token = jwt.sign(
-            { id: user._id, username: user.username, role: user.role },
+            {
+                id: user._id,
+                username: user.username,
+                role: normalizedRole,
+                tokenVersion: Number.isInteger(user.tokenVersion) ? user.tokenVersion : 0
+            },
             JWT_SECRET,
             { expiresIn: '7d' }
         );
@@ -1786,7 +2002,7 @@ app.post('/api/users/login', async (req, res) => {
 
         res.json({
             token,
-            user: { id: user._id, username: user.username, role: user.role, permissions: user.permissions }
+            user: { id: user._id, username: user.username, role: normalizedRole, permissions: user.permissions }
         });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -1828,7 +2044,11 @@ app.post('/api/auth/verify-password', authenticateToken, async (req, res) => {
 app.get('/api/users', authenticateToken, authorizeRoles('Admin', 'Super Admin', 'Owner'), async (req, res) => {
     try {
         const users = await User.find({}, '-passwordHash').sort({ createdAt: -1 });
-        res.json(users);
+        res.json(users.map((user) => {
+            const plain = user.toObject();
+            plain.role = normalizeUserRole(plain.role);
+            return plain;
+        }));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -1838,15 +2058,33 @@ app.get('/api/users', authenticateToken, authorizeRoles('Admin', 'Super Admin', 
 app.post('/api/users', authenticateToken, authorizeRoles('Admin', 'Super Admin', 'Owner'), async (req, res) => {
     try {
         const { username, password, role, permissions } = req.body;
+        const normalizedRole = normalizeUserRole(role);
+        if (!username || !password || !normalizedRole) {
+            return res.status(400).json({ message: 'username, password and role are required' });
+        }
+        if (String(password).length < 8) {
+            return res.status(400).json({ message: 'Password must be at least 8 characters long' });
+        }
+        if (!AUTHENTICATED_ROLES.includes(normalizedRole)) {
+            return res.status(400).json({ message: 'Invalid role selected' });
+        }
+
         const existing = await User.findOne({ username });
         if (existing) return res.status(400).json({ message: 'Username already taken' });
 
-        if ((role === 'Super Admin' || role === 'Owner') && (req.user.role !== 'Super Admin' && req.user.role !== 'Owner')) {
+        if ((normalizedRole === 'Super Admin' || normalizedRole === 'Owner') && (req.user.role !== 'Super Admin' && req.user.role !== 'Owner')) {
             return res.status(403).json({ message: 'Only Super Admin/Owner can create other Super Admins/Owners' });
         }
 
         const passwordHash = await bcrypt.hash(password, 10);
-        const newUser = new User({ username, passwordHash, role, permissions, status: 'Active' });
+        const newUser = new User({
+            username,
+            passwordHash,
+            role: normalizedRole,
+            permissions: Array.isArray(permissions) ? permissions : [],
+            status: 'Active',
+            tokenVersion: 0
+        });
         await newUser.save();
         res.status(201).json({ message: 'User created successfully' });
     } catch (err) {
@@ -1861,8 +2099,14 @@ app.put('/api/users/:id', authenticateToken, authorizeRoles('Admin', 'Super Admi
         const userToUpdate = await User.findById(req.params.id);
         if (!userToUpdate) return res.status(404).json({ message: 'User not found' });
 
+        const originalRole = normalizeUserRole(userToUpdate.role);
+        const originalStatus = userToUpdate.status;
+        if (userToUpdate.role !== originalRole) {
+            userToUpdate.role = originalRole;
+        }
+
         // Security Rules: Admin cannot modify Super Admin/Owner
-        const isTargetSuper = userToUpdate.role === 'Super Admin' || userToUpdate.role === 'Owner';
+        const isTargetSuper = originalRole === 'Super Admin' || originalRole === 'Owner';
         const isRequesterSuper = req.user.role === 'Super Admin' || req.user.role === 'Owner';
 
         if (isTargetSuper && !isRequesterSuper) {
@@ -1870,24 +2114,36 @@ app.put('/api/users/:id', authenticateToken, authorizeRoles('Admin', 'Super Admi
         }
 
         if (role) {
+            const normalizedRole = normalizeUserRole(role);
+            if (!AUTHENTICATED_ROLES.includes(normalizedRole)) {
+                return res.status(400).json({ message: 'Invalid role selected' });
+            }
+
             // IMMUTABLE RULE: Super Admin role cannot be changed
             if (userToUpdate.role === 'Super Admin') {
                 return res.status(403).json({ message: 'Super Admin role cannot be changed' });
             }
 
             // Only Super Admin/Owner can promote/demote or assign restricted roles
-            if ((role === 'Super Admin' || role === 'Owner') && !isRequesterSuper) {
+            if ((normalizedRole === 'Super Admin' || normalizedRole === 'Owner') && !isRequesterSuper) {
                 return res.status(403).json({ message: 'Only Super Admin/Owner can assign restricted roles' });
             }
-            userToUpdate.role = role;
+            userToUpdate.role = normalizedRole;
         }
-        if (permissions) userToUpdate.permissions = permissions;
+        if (permissions) userToUpdate.permissions = Array.isArray(permissions) ? permissions : userToUpdate.permissions;
         if (status) {
             // Hard Lock: Cannot deactivate Super Admin
             if (userToUpdate.role === 'Super Admin' && status === 'Deactivated') {
                 return res.status(403).json({ message: 'Super Admin account cannot be deactivated' });
             }
             userToUpdate.status = status;
+        }
+
+        const shouldInvalidateSessions =
+            userToUpdate.role !== originalRole ||
+            userToUpdate.status !== originalStatus;
+        if (shouldInvalidateSessions) {
+            userToUpdate.tokenVersion = (userToUpdate.tokenVersion || 0) + 1;
         }
 
         await userToUpdate.save();
@@ -1902,14 +2158,20 @@ app.put('/api/users/:id', authenticateToken, authorizeRoles('Admin', 'Super Admi
 app.patch('/api/users/:id/reset-password', authenticateToken, authorizeRoles('Admin', 'Super Admin'), async (req, res) => {
     try {
         const { newPassword } = req.body;
+        if (!newPassword || String(newPassword).length < 8) {
+            return res.status(400).json({ message: 'newPassword must be at least 8 characters long' });
+        }
+
         const userToUpdate = await User.findById(req.params.id);
         if (!userToUpdate) return res.status(404).json({ message: 'User not found' });
 
-        if (userToUpdate.role === 'Super Admin' && req.user.role !== 'Super Admin') {
+        const targetRole = normalizeUserRole(userToUpdate.role);
+        if (targetRole === 'Super Admin' && req.user.role !== 'Super Admin') {
             return res.status(403).json({ message: 'Only Super Admin can reset Super Admin passwords' });
         }
 
         userToUpdate.passwordHash = await bcrypt.hash(newPassword, 10);
+        userToUpdate.tokenVersion = (userToUpdate.tokenVersion || 0) + 1;
         await userToUpdate.save();
         res.json({ message: 'Password reset successfully' });
     } catch (err) {
@@ -7868,7 +8130,7 @@ const withEmailOverride = (settings, customEmail) => {
 // Test email configuration
 app.post('/api/email/test', authenticateToken, async (req, res) => {
     try {
-        const settings = await Settings.findOne();
+        const settings = await getSettingsForOperations();
         const effectiveSettings = withEmailOverride(settings, req.body?.customEmail);
         const result = await emailService.sendTestEmail(effectiveSettings);
         if (result.success) {
@@ -7889,7 +8151,7 @@ app.post('/api/email/test', authenticateToken, async (req, res) => {
 // Manually trigger low stock alert email
 app.post('/api/email/send-low-stock-alert', authenticateToken, async (req, res) => {
     try {
-        const settings = await Settings.findOne();
+        const settings = await getSettingsForOperations();
         const effectiveSettings = withEmailOverride(settings, req.body?.customEmail);
 
         // Find all low stock medicines
@@ -7928,7 +8190,7 @@ app.post('/api/email/send-low-stock-alert', authenticateToken, async (req, res) 
 // Manually trigger expiry alert email
 app.post('/api/email/send-expiry-alert', authenticateToken, async (req, res) => {
     try {
-        const settings = await Settings.findOne();
+        const settings = await getSettingsForOperations();
         const effectiveSettings = withEmailOverride(settings, req.body?.customEmail);
         const expiryAlertDays = settings?.expiryAlertDays || 30;
 
@@ -7971,7 +8233,7 @@ app.post('/api/email/send-expiry-alert', authenticateToken, async (req, res) => 
 // Daily sales summary email
 app.post('/api/email/send-daily-summary', authenticateToken, async (req, res) => {
     try {
-        const settings = await Settings.findOne();
+        const settings = await getSettingsForOperations();
         const effectiveSettings = withEmailOverride(settings, req.body?.customEmail);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -8037,7 +8299,7 @@ app.post('/api/email/send-daily-summary', authenticateToken, async (req, res) =>
 // Inventory report email
 app.post('/api/email/send-inventory-report', authenticateToken, async (req, res) => {
     try {
-        const settings = await Settings.findOne();
+        const settings = await getSettingsForOperations();
         const effectiveSettings = withEmailOverride(settings, req.body?.customEmail);
         const inventory = await Medicine.find({ status: 'Active' })
             .select('name stock unit costPrice price sellingPrice status') // Updated to select correct price fields
@@ -8065,7 +8327,7 @@ app.post('/api/email/send-inventory-report', authenticateToken, async (req, res)
 // Returns report email
 app.post('/api/email/send-returns-report', authenticateToken, async (req, res) => {
     try {
-        const settings = await Settings.findOne();
+        const settings = await getSettingsForOperations();
         const effectiveSettings = withEmailOverride(settings, req.body?.customEmail);
         const returns = await Transaction.find({ type: 'Return' })
             .sort({ createdAt: -1 })
@@ -8094,7 +8356,7 @@ app.post('/api/email/send-returns-report', authenticateToken, async (req, res) =
 // Transaction history email
 app.post('/api/email/send-transaction-history', authenticateToken, async (req, res) => {
     try {
-        const settings = await Settings.findOne();
+        const settings = await getSettingsForOperations();
         const effectiveSettings = withEmailOverride(settings, req.body?.customEmail);
         const last7Days = new Date();
         last7Days.setDate(last7Days.getDate() - 7);
@@ -8129,16 +8391,17 @@ app.post('/api/email/send-transaction-history', authenticateToken, async (req, r
 // Verify email connection
 app.get('/api/email/verify', authenticateToken, async (req, res) => {
     try {
-        const isConnected = await emailService.verifyEmailConnection();
+        const settings = await getSettingsForOperations();
+        const isConnected = await emailService.verifyEmailConnection(settings);
         if (isConnected) {
             res.json({
                 message: 'Email server connection verified',
                 success: true,
                 config: {
-                    host: process.env.SMTP_HOST,
-                    port: process.env.SMTP_PORT,
-                    from: process.env.STORE_EMAIL,
-                    to: process.env.OWNER_EMAIL
+                    host: settings?.smtpHost || process.env.SMTP_HOST,
+                    port: settings?.smtpPort || process.env.SMTP_PORT,
+                    from: settings?.storeEmail || settings?.smtpUser || process.env.STORE_EMAIL,
+                    to: settings?.ownerEmail || process.env.OWNER_EMAIL
                 }
             });
         } else {
