@@ -60,6 +60,189 @@ const Home = () => {
         return `TX-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
     };
 
+    const escapeHtml = (value) => String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const openPrintWindow = () => {
+        const frame = document.createElement('iframe');
+        frame.style.position = 'fixed';
+        frame.style.right = '0';
+        frame.style.bottom = '0';
+        frame.style.width = '0';
+        frame.style.height = '0';
+        frame.style.border = '0';
+        frame.style.opacity = '0';
+        frame.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(frame);
+
+        const win = frame.contentWindow;
+        if (!win) {
+            frame.remove();
+            return null;
+        }
+
+        return {
+            window: win,
+            document: win.document,
+            close: () => frame.remove()
+        };
+    };
+
+    const buildReceiptHtml = (receipt) => {
+        const {
+            storeName,
+            storeAddress,
+            storePhone,
+            storeEmail,
+            date,
+            billNumber,
+            invoiceNumber,
+            transactionId,
+            customer,
+            items,
+            subtotal,
+            tax,
+            platformFee,
+            discount,
+            total,
+            paymentMethod,
+            receiptHeader,
+            receiptFooter,
+            receiptTerms
+        } = receipt;
+
+        const itemsRows = items.map((item, index) => {
+            const quantity = Number(item.quantity ?? item.billedQuantity ?? 0);
+            const unitPrice = Number(item.price ?? item.unitPrice ?? 0);
+            const lineSubtotal = Number(item.subtotal ?? item.netItemTotal ?? (quantity * unitPrice));
+            const lineTotal = Number.isFinite(lineSubtotal) ? Math.abs(lineSubtotal) : 0;
+            const itemName = escapeHtml(item.name || item.medicineName || `Item ${index + 1}`);
+            const mrp = Number(item.mrp) > 0
+                ? `<div class="muted">MRP: ${escapeHtml(formatPrice(Number(item.mrp)))}</div>`
+                : '';
+            const saleType = item.saleType
+                ? `<div class="muted">${escapeHtml(item.saleType === 'Pack' ? 'Pack Sale' : 'Unit Sale')}</div>`
+                : '';
+
+            return `
+                <tr>
+                    <td>
+                        <div class="item-name">${itemName}</div>
+                        ${mrp}
+                        <div class="muted">${quantity} x ${escapeHtml(formatPrice(unitPrice))}</div>
+                        ${saleType}
+                    </td>
+                    <td class="text-right">${escapeHtml(formatPrice(lineTotal))}</td>
+                </tr>
+            `;
+        }).join('');
+
+        const absSubtotal = Math.abs(Number(subtotal) || 0);
+        const absTax = Math.abs(Number(tax) || 0);
+        const absPlatformFee = Math.abs(Number(platformFee) || 0);
+        const absDiscount = Math.abs(Number(discount) || 0);
+        const absTotal = Math.abs(Number(total) || 0);
+
+        const taxRow = absTax > 0
+            ? `<tr><td>Tax</td><td class="text-right">${escapeHtml(formatPrice(absTax))}</td></tr>`
+            : '';
+        const platformRow = absPlatformFee > 0
+            ? `<tr><td>Platform Fee</td><td class="text-right">${escapeHtml(formatPrice(absPlatformFee))}</td></tr>`
+            : '';
+        const discountRow = absDiscount > 0
+            ? `<tr><td>Discount</td><td class="text-right">-${escapeHtml(formatPrice(absDiscount))}</td></tr>`
+            : '';
+
+        const customerBlock = customer
+            ? `
+                <div class="box">
+                    <div class="muted title">CUSTOMER DETAILS</div>
+                    <div>${escapeHtml(customer.name || '')}</div>
+                    ${customer.email ? `<div class="muted">${escapeHtml(customer.email)}</div>` : ''}
+                    ${customer.phone ? `<div class="muted">${escapeHtml(customer.phone)}</div>` : ''}
+                </div>
+            `
+            : '';
+
+        const headerLine = billNumber ? `Bill #: ${escapeHtml(billNumber)}` : `Draft: ${escapeHtml(transactionId || '')}`;
+        const invoiceLine = invoiceNumber ? `<div class="muted">Invoice: ${escapeHtml(invoiceNumber)}</div>` : '';
+
+        return `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Receipt</title>
+                <style>
+                    * { box-sizing: border-box; }
+                    body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 16px; }
+                    .center { text-align: center; }
+                    .muted { color: #666; font-size: 12px; }
+                    .title { font-weight: 700; letter-spacing: 0.4px; margin-bottom: 6px; }
+                    .store-name { font-size: 20px; font-weight: 700; margin-bottom: 2px; }
+                    .divider { border-top: 1px dashed #cfcfcf; margin: 10px 0; }
+                    .box { border: 1px solid #e5e5e5; border-radius: 6px; padding: 8px; margin: 10px 0; }
+                    table { width: 100%; border-collapse: collapse; }
+                    th, td { padding: 6px 0; vertical-align: top; font-size: 13px; }
+                    .text-right { text-align: right; }
+                    .item-name { font-weight: 600; }
+                    .total-row td { font-size: 15px; font-weight: 700; border-top: 1px dashed #cfcfcf; padding-top: 8px; }
+                    @media print {
+                        body { margin: 0; }
+                        @page { margin: 12mm; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="center">
+                    <div class="store-name">${escapeHtml(storeName || 'MedKit POS')}</div>
+                    <div class="muted">${escapeHtml(storeAddress || 'Pharmacy Management System')}</div>
+                    ${storePhone ? `<div class="muted">Tel: ${escapeHtml(storePhone)}</div>` : ''}
+                    ${storeEmail ? `<div class="muted">Email: ${escapeHtml(storeEmail)}</div>` : ''}
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="center muted">${escapeHtml(date || new Date().toLocaleString())}</div>
+                <div class="center" style="margin-top:6px;">
+                    <div style="font-weight:700;">${headerLine}</div>
+                    ${invoiceLine}
+                </div>
+
+                ${customerBlock}
+
+                <div class="divider"></div>
+
+                <table>
+                    <tbody>
+                        ${itemsRows}
+                    </tbody>
+                </table>
+
+                <div class="divider"></div>
+
+                <table>
+                    <tbody>
+                        <tr><td>Subtotal</td><td class="text-right">${escapeHtml(formatPrice(absSubtotal))}</td></tr>
+                        ${taxRow}
+                        ${platformRow}
+                        ${discountRow}
+                        <tr class="total-row"><td>Total</td><td class="text-right">${escapeHtml(formatPrice(absTotal))}</td></tr>
+                        <tr><td>Payment Method</td><td class="text-right">${escapeHtml(paymentMethod || 'N/A')}</td></tr>
+                    </tbody>
+                </table>
+
+                ${receiptHeader ? `<div class="divider"></div><div class="center">${escapeHtml(receiptHeader)}</div>` : ''}
+                ${receiptFooter ? `<div class="center muted" style="margin-top:6px;">${escapeHtml(receiptFooter)}</div>` : ''}
+                ${receiptTerms ? `<div class="center muted" style="margin-top:6px;">Terms: ${escapeHtml(receiptTerms)}</div>` : ''}
+            </body>
+            </html>
+        `;
+    };
+
 
 
     const user = useMemo(() => {
@@ -526,6 +709,13 @@ const Home = () => {
             return;
         }
 
+        const printWindow = openPrintWindow();
+        if (!printWindow) {
+            showToast('Unable to initialize print preview.', 'error');
+            setLoading(false);
+            return;
+        }
+
         // Always print the bill based on strict policy
         // (Comment about "regardless of backend" is now obsolete, we enforce backend save)
 
@@ -577,6 +767,58 @@ const Home = () => {
             receiptFooter: settings?.receiptFooter
         };
 
+        const printAndFinalize = async (overrides = {}) => {
+            const hasBillNumberOverride = Object.prototype.hasOwnProperty.call(overrides, 'billNumber');
+            const hasInvoiceNumberOverride = Object.prototype.hasOwnProperty.call(overrides, 'invoiceNumber');
+
+            const receiptData = {
+                storeName: settings?.storeName || 'MedKit POS',
+                storeAddress: settings?.storeAddress || 'Pharmacy Management System',
+                storePhone: settings?.storePhone,
+                storeEmail: settings?.storeEmail,
+                date: new Date().toLocaleString(),
+                billNumber: hasBillNumberOverride ? overrides.billNumber : currentBillNumber,
+                invoiceNumber: hasInvoiceNumberOverride ? overrides.invoiceNumber : currentInvoiceNumber,
+                transactionId,
+                customer: selectedCustomer || {
+                    name: customerInfo.name || 'Walk-in',
+                    phone: customerInfo.phone || '',
+                    email: customerInfo.email || ''
+                },
+                items: preparedCartItems,
+                subtotal,
+                tax: taxAmount,
+                platformFee,
+                discount: discountAmount,
+                total: cartTotal,
+                paymentMethod,
+                receiptHeader: settings?.receiptHeader,
+                receiptFooter: settings?.receiptFooter,
+                receiptTerms: settings?.receiptTerms
+            };
+
+            const html = buildReceiptHtml(receiptData);
+            printWindow.document.open();
+            printWindow.document.write(html);
+            printWindow.document.close();
+
+            const doPrint = () => {
+                printWindow.window.focus();
+                printWindow.window.print();
+            };
+
+            const cleanup = () => {
+                printWindow.window.removeEventListener('afterprint', cleanup);
+                printWindow.close();
+            };
+
+            printWindow.window.addEventListener('afterprint', cleanup);
+            setTimeout(doPrint, 250);
+            setTimeout(cleanup, 1000);
+
+            finalizeOrder();
+        };
+
         // Save transaction to backend strictly
         try {
             // Create completely clean object without prototype chain
@@ -587,13 +829,15 @@ const Home = () => {
                 showToast('Offline Mode: Sale queued locally.', 'warning');
 
                 // Set placeholder numbers for printing
-                setCurrentBillNumber(`OFF-${Date.now().toString().slice(-4)}`);
-                setCurrentInvoiceNumber(`INV-OFF-${Date.now().toString().slice(-4)}`);
+                const offlineBillNumber = `OFF-${Date.now().toString().slice(-4)}`;
+                const offlineInvoiceNumber = `INV-OFF-${Date.now().toString().slice(-4)}`;
+                setCurrentBillNumber(offlineBillNumber);
+                setCurrentInvoiceNumber(offlineInvoiceNumber);
 
-                await new Promise(resolve => setTimeout(resolve, 300));
-                window.print();
-
-                finalizeOrder();
+                await printAndFinalize({
+                    billNumber: offlineBillNumber,
+                    invoiceNumber: offlineInvoiceNumber
+                });
                 return;
             }
 
@@ -601,6 +845,7 @@ const Home = () => {
             const token = localStorage.getItem('token');
             if (!token) {
                 showToast('Authentication token missing. Please logout and login again.', 'error');
+                printWindow.close();
                 setLoading(false);
                 return;
             }
@@ -622,13 +867,15 @@ const Home = () => {
                 if (responseData && responseData.billNumber) {
                     setCurrentBillNumber(responseData.billNumber);
                     setCurrentInvoiceNumber(responseData.invoiceNumber || '');
-                    await new Promise(resolve => setTimeout(resolve, 300));
                 }
 
-                window.print();
-                finalizeOrder();
+                await printAndFinalize({
+                    billNumber: responseData?.billNumber,
+                    invoiceNumber: responseData?.invoiceNumber || ''
+                });
             } else {
                 showToast(responseData.message || 'Failed to save transaction.', 'error');
+                printWindow.close();
             }
         } catch (error) {
             console.error('❌ Network/Server Error:', error);
@@ -636,10 +883,11 @@ const Home = () => {
             await queueTransaction(JSON.parse(JSON.stringify(transactionData)));
             showToast('Network error: Sale queued locally.', 'warning');
 
-            setCurrentBillNumber(`ERR-${Date.now().toString().slice(-4)}`);
-            await new Promise(resolve => setTimeout(resolve, 300));
-            window.print();
-            finalizeOrder();
+            const errorBillNumber = `ERR-${Date.now().toString().slice(-4)}`;
+            setCurrentBillNumber(errorBillNumber);
+            await printAndFinalize({
+                billNumber: errorBillNumber
+            });
         } finally {
             setLoading(false);
         }

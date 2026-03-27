@@ -52,7 +52,7 @@ const InvoiceDetailsModal = ({ isOpen, onClose, invoice, onVoid, onPaySelected }
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 print:bg-transparent print:block print:p-0">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden print:shadow-none print:max-w-none print:rounded-none max-h-[90vh] flex flex-col">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden print:overflow-visible print:shadow-none print:max-w-none print:rounded-none max-h-[90vh] flex flex-col">
                 <div className="bg-gray-50 p-4 flex justify-between items-center border-b border-gray-100 print:hidden">
                     <h2 className="font-bold text-lg text-gray-800">Invoice Details</h2>
                     <div className="flex gap-2">
