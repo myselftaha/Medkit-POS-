@@ -71,7 +71,7 @@ const BillModal = ({
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[150] p-4 print:static print:bg-white print:p-0 print:block">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden print:shadow-none print:w-full print:max-w-none print:rounded-none">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] print:shadow-none print:w-full print:max-w-none print:rounded-none print:max-h-none">
                 {/* Header */}
                 <div className={`${headerClass} p-4 flex justify-between items-center text-white print:hidden`}>
                     <h2 className="font-bold text-lg flex items-center gap-2">
@@ -84,7 +84,7 @@ const BillModal = ({
                 </div>
 
                 {/* Receipt Content */}
-                <div className="p-6 print:p-0" id="printable-receipt">
+                <div className="p-6 print:p-0 flex-1 overflow-y-auto scrollbar-hide print:overflow-visible" id="printable-receipt">
                     <div className="text-center mb-6">
                         {settings?.storeLogo ? (
                             <div className="flex justify-center mb-2">

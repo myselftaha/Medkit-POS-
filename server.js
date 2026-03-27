@@ -948,7 +948,8 @@ const getNextBillNumber = async () => {
         {
             new: true,
             upsert: true,
-            setDefaultsOnInsert: false
+            setDefaultsOnInsert: false,
+            updatePipeline: true
         }
     );
     return counter?.seq || 1001;
